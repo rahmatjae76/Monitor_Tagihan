@@ -3,529 +3,867 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitor Tagihan Klien - Supabase</title>
-    
-    <!-- Tailwind CSS -->
+    <title>Kontrol Penagihan Proyek - Supabase</title>
+    <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- Babel untuk JSX -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Supabase JS Client -->
+    <!-- Load Supabase Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
+    <!-- Load Lucide Icons (as a utility) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        /* Custom Scrollbar for cleaner look */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        /* Custom scrollbar for better look */
+        ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #c7c7c7; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Font for clean look */
+        body { font-family: 'Inter', sans-serif; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans">
-    <div id="root"></div>
+<body class="bg-gray-50 text-gray-800">
 
-    <script type="text/babel">
-        // --- SETUP SUPABASE ---
+    <div id="app-container" class="min-h-screen">
+        <!-- Content will be rendered here by JavaScript -->
+    </div>
+
+    <!-- Custom Confirmation Modal Structure (Hidden by default) -->
+    <div id="confirmation-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm">
+            <div class="p-6 border-b border-gray-100 flex items-center gap-3">
+                <div class="p-2 bg-yellow-100 rounded-full">
+                    <svg id="confirm-icon" class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856a2 2 0 001.789-3.418L13.78 6.582a2 2 0 00-3.56 0L4.223 16.582A2 2 0 006 20.001z"></path></svg>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900">Konfirmasi Tindakan</h3>
+            </div>
+            <div id="confirm-message" class="p-6 text-gray-700">
+                Apakah Anda yakin ingin melakukan tindakan ini?
+            </div>
+            <div class="p-4 border-t border-gray-100 bg-gray-50 rounded-b-xl flex justify-end gap-2">
+                <button id="confirm-cancel" class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-100 text-sm">Batal</button>
+                <button id="confirm-ok" class="px-4 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 text-sm">Lanjutkan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom History Modal Structure (Hidden by default) -->
+    <div id="history-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-gray-900">Tambah Catatan Histori</h3>
+                <button id="history-close" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Catatan</label>
+                    <input type="date" id="history-date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Catatan Progres</label>
+                    <textarea id="history-text" rows="3" placeholder="Contoh: Klien setuju dengan nominal, menunggu PIC TTD." class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
+                </div>
+            </div>
+            <div class="p-4 border-t border-gray-100 bg-gray-50 rounded-b-xl flex justify-end">
+                <button id="history-save" class="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 text-sm">Simpan Catatan</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. KONSTANTA & INISIALISASI SUPABASE ---
         const SUPABASE_URL = 'https://epitfrqwwsdtqvcxxfgo.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwaXRmcnF3d3NkdHF2Y3h4ZmdvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyNjM0MTksImV4cCI6MjA3OTgzOTQxOX0.-gccKjikjaFXVCQ9W-uj77OlhbKPfJplb81rrTBTID4';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-        // --- KONSTANTA & UTILS ---
-        const InvoiceStatus = {
-            DRAFT: 'DRAFT',
-            SUBMITTED: 'Diajukan (Progress)',
-            APPROVED: 'Disetujui (Final)',
-            PAID: 'Lunas',
-            OVERDUE: 'Jatuh Tempo',
-            PARTIAL_PAID: 'Bayar Sebagian',
-        };
-
-        const formatRupiah = (amount) => {
-            if (typeof amount !== 'number' || isNaN(amount)) return 'Rp 0';
-            const displayAmount = Math.abs(amount);
-            const formatted = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(displayAmount);
-            return amount < 0 ? `(${formatted})` : formatted;
-        };
-
-        const calculateAge = (dateString) => {
-            if (!dateString) return 'N/A';
-            const today = new Date();
-            const invoiceDate = new Date(dateString);
-            const diffTime = Math.abs(today - invoiceDate);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            return diffDays;
-        };
-
-        const getDate = (days = 0) => {
-            const d = new Date();
-            d.setDate(d.getDate() + days);
-            return d.toISOString().split('T')[0];
-        };
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwaXRmcnF3d3NkdHF2Y3h4ZmdvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyNjM0MTksImV4cCI6MjA3OTgzOTQxOX0.-gccKjikjaFXVCQ9W-uj77OlhbKPJplb81rrTBTID4';
+        const PPN_RATE = 0.11;
         
-        const parseAmount = (value) => {
-            const num = parseFloat(String(value).replace(/[^0-9]/g, '')) || 0;
-            return Math.round(num);
+        let supabase;
+        let state = {
+            // User dan autentikasi sederhana (role based)
+            user: JSON.parse(localStorage.getItem('user')) || null, 
+            invoices: [],
+            clients: [],
+            selectedInvoice: null,
+            currentView: 'login', // 'login', 'dashboard', 'detail'
+            filters: { client: 'all', project: 'all', activity: 'all' },
+            loading: false,
+            // State untuk Modal
+            confirmationAction: null,
         };
 
-        // --- ICON COMPONENTS (Inline SVG replacement for lucide-react) ---
-        const Icons = {
-            CreditCard: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>,
-            Loader: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>,
-            AlertTriangle: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>,
-            CheckCircle: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
-            DollarSign: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
-            Calendar: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>,
-            User: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
-            Briefcase: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>,
-            Activity: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>,
-            ChevronDown: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>,
-            X: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 18 18"/></svg>,
-            History: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12"/><path d="M3 3v9h9"/><path d="M12 7v5l4 2"/></svg>,
-            Save: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
-            Link: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>,
-            List: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>,
-            MinusCircle: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="8" x2="16" y1="12" y2="12"/></svg>,
-            LogIn: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/></svg>,
-            WifiOff: (props) => <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" x2="23" y1="1" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" x2="12.01" y1="20" y2="20"/></svg>
+        // --- 2. MOCK DATA UNTUK SEEDING DATABASE ---
+        // Catatan: Karena kita tidak punya tabel relasi, saya duplikasi data klien ke invoice
+        const mockData = {
+            clients: [
+                { client_name: 'PT Maju Bersama', project_name: 'Sistem ERP', project_activity: 'Pengembangan Perangkat Lunak' },
+                { client_name: 'CV Sumber Rejeki', project_name: 'Pemasaran Digital Q4', project_activity: 'Jasa Konsultasi Pemasaran' },
+                { client_name: 'UD Tani Makmur', project_name: 'Laporan Keuangan Q1', project_activity: 'Jasa Akuntansi' },
+                { client_name: 'PT Tekno Solusi', project_name: 'Upgrade Server', project_activity: 'Jasa Instalasi Hardware' },
+            ],
+            invoices: [
+                { invoice_number: 'INV-2024-001', client_name: 'PT Maju Bersama', project_name: 'Sistem ERP', project_activity: 'Pengembangan Perangkat Lunak', date_created: '2024-02-01', date_due: '2024-02-15', date_paid: '2024-02-10', amount_base: 10000000, status: 'PAID', amount_paid: 11100000, history: [{ date: '2024-02-10', text: 'Pembayaran penuh diterima melalui transfer bank.' }] },
+                { invoice_number: 'INV-2024-002', client_name: 'CV Sumber Rejeki', project_name: 'Pemasaran Digital Q4', project_activity: 'Jasa Konsultasi Pemasaran', date_created: '2024-03-01', date_due: '2024-03-14', date_paid: null, amount_base: 5500000, status: 'OVERDUE', amount_paid: 0, history: [{ date: '2024-03-01', text: 'Invoice dikirim fisik via kurir.' }, { date: '2024-03-15', text: 'Telpon ke kantor: PIC sedang cuti sakit seminggu.' }] },
+                { invoice_number: 'CLAIM-2024-001', client_name: 'UD Tani Makmur', project_name: 'Laporan Keuangan Q1', project_activity: 'Jasa Akuntansi', date_created: '2024-03-10', date_due: '2024-03-24', date_paid: null, amount_base: 2500000, status: 'DRAFT', amount_paid: 0, history: [{ date: '2024-03-10', text: 'Draft klaim dibuat dan dikirim untuk persetujuan internal.' }] },
+                { invoice_number: 'INV-2024-003', client_name: 'PT Tekno Solusi', project_name: 'Upgrade Server', project_activity: 'Jasa Instalasi Hardware', date_created: '2024-11-20', date_due: '2024-12-04', date_paid: null, amount_base: 12000000, status: 'PENDING', amount_paid: 0, history: [] }
+            ],
         };
 
+        // --- 3. UTILITY FUNCTIONS ---
 
-        // --- MOCK DATA GENERATORS ---
-        const getMockClients = () => [
-            {
-                id: 'C-001', name: 'PT. Teknologi Maju',
-                projects: [{ id: 'P-001', name: 'Implementasi Sistem CRM', activities: [{ id: 'A-001', name: 'Fase Analisis Kebutuhan' }, { id: 'A-002', name: 'Fase Pengembangan dan Uji Coba' }] }, { id: 'P-002', name: 'Audit Keamanan Jaringan', activities: [{ id: 'A-003', name: 'Pengetesan Penetration' }] }]
-            },
-            {
-                id: 'C-002', name: 'CV. Kreatif Solusi',
-                projects: [{ id: 'P-003', name: 'Penyusunan Konten Digital', activities: [{ id: 'A-004', name: 'Campaign Media Sosial Q4' }] }]
-            }
-        ];
-
-        const getMockInvoices = () => [
-            {
-                id: 'INV-PROG-001', invoiceType: 'PROGRESS', status: InvoiceStatus.SUBMITTED,
-                clientId: 'C-001', clientName: 'PT. Teknologi Maju', projectId: 'P-001', projectName: 'Implementasi Sistem CRM',
-                activityId: 'A-001', activityName: 'Fase Analisis Kebutuhan', description: 'Klaim Progres Fase Analisis Kebutuhan (80% selesai).',
-                invoiceDate: getDate(-7), dueDate: getDate(23), totalAmountExclPPN: 50000000, amountReceived: 0,
-                documentLink: '', history: [{ note: "Klaim progres diajukan.", date: new Date().toLocaleString('id-ID'), user: 'System' }], paymentHistory: []
-            },
-            {
-                id: 'INV-FINAL-002', invoiceType: 'FINAL', status: InvoiceStatus.APPROVED, invoiceNumber: 'FIN/2025/11/002',
-                clientId: 'C-001', clientName: 'PT. Teknologi Maju', projectId: 'P-002', projectName: 'Audit Keamanan Jaringan',
-                activityId: 'A-003', activityName: 'Pengetesan Penetration', description: 'Invoice Final Jasa Audit Keamanan.',
-                invoiceDate: getDate(-45), dueDate: getDate(-10), totalAmountExclPPN: 30000000, amountReceived: 0,
-                documentLink: 'https://docs.google.com/document/d/invoice-002-audit',
-                history: [{ note: "Invoice Final dikirim.", date: new Date().toLocaleString('id-ID'), user: 'Finance' }], paymentHistory: []
-            }
-        ];
-
-        // --- UI COMPONENTS ---
-
-        const PaymentModal = ({ isOpen, invoice, onUpdate, onCancel }) => {
-            const [date, setDate] = React.useState(new Date().toISOString().split('T')[0]); 
-            const [cashReceivedInput, setCashReceivedInput] = React.useState('');
-            const [pphDeductionInput, setPphDeductionInput] = React.useState('');
-            const [adjustmentInput, setAdjustmentInput] = React.useState('');
-            const [note, setNote] = React.useState('');
-            const [adjustmentNote, setAdjustmentNote] = React.useState('');
-            
-            const currentInvoice = invoice;
-            const totalAmount = currentInvoice ? Math.round(currentInvoice.totalAmountExclPPN || 0) : 0;
-            const currentApplied = currentInvoice ? Math.round(currentInvoice.amountReceived || 0) : 0;
-            const totalOutstanding = totalAmount - currentApplied;
-
-            const cashReceived = parseAmount(cashReceivedInput);
-            const pphDeduction = parseAmount(pphDeductionInput);
-            const adjustment = parseAmount(adjustmentInput);
-            const totalAppliedThisTx = cashReceived + pphDeduction + adjustment;
-            const projectedOutstanding = totalAmount - (currentApplied + totalAppliedThisTx);
-
-            React.useEffect(() => {
-                if (isOpen && currentInvoice) {
-                    setNote(''); setAdjustmentNote(''); setCashReceivedInput('');
-                    setPphDeductionInput(''); setAdjustmentInput('');
-                    setDate(new Date().toISOString().split('T')[0]);
-                }
-            }, [isOpen, currentInvoice]);
-            
-            if (!isOpen || !currentInvoice) return null;
-
-            const handleSubmit = () => {
-                if (totalAppliedThisTx > totalOutstanding) {
-                    alert("Total pembayaran melebihi sisa tagihan!");
-                    return;
-                }
-                onUpdate(currentInvoice.id, {
-                    date, cashReceived, pphDeduction, adjustmentAmount: adjustment, note, adjustmentNote,
-                });
+        const calculateTotal = (base) => base + (base * PPN_RATE);
+        const formatIDR = (amount) => {
+            if (isNaN(amount) || amount === null) return 'Rp 0';
+            return new Intl.NumberFormat('id-ID', {
+                style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0,
+            }).format(amount);
+        };
+        const formatDate = (dateString) => {
+            if (!dateString) return '-';
+            const options = { day: 'numeric', month: 'short', year: 'numeric' };
+            try {
+                const date = new Date(dateString + 'T00:00:00'); 
+                return date.toLocaleDateString('id-ID', options);
+            } catch (error) { return dateString; }
+        };
+        const getAging = (created, paid) => {
+            const start = new Date(created);
+            const end = paid ? new Date(paid) : new Date();
+            if (isNaN(start)) return 0;
+            start.setHours(0, 0, 0, 0); end.setHours(0, 0, 0, 0);
+            const diffTime = Math.abs(end.getTime() - start.getTime());
+            return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+        };
+        const getStatusBadge = (status) => {
+            const statusMap = {
+                'PAID': { text: 'LUNAS', color: 'bg-green-100 text-green-700 border-green-200' },
+                'PENDING': { text: 'PENDING', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+                'OVERDUE': { text: 'JATUH TEMPO', color: 'bg-red-100 text-red-700 border-red-200' },
+                'DRAFT': { text: 'PROGRESS KLAIM', color: 'bg-blue-100 text-blue-700 border-blue-200' },
             };
-            
-            const formatAmountDisplay = (val) => {
-                const num = parseAmount(val);
-                return isNaN(num) || num === 0 ? '' : new Intl.NumberFormat('id-ID').format(num);
-            };
-
-            const isSubmitDisabled = totalAppliedThisTx <= 0 || !note.trim() || (adjustment !== 0 && !adjustmentNote.trim()) || totalAppliedThisTx > totalOutstanding;
-
-            return (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl transform transition-all duration-300 overflow-hidden">
-                        <div className="p-6 max-h-[90vh] overflow-y-auto">
-                            <div className="flex justify-between items-center mb-4 border-b pb-2">
-                                <h3 className="text-xl font-bold text-gray-900 flex items-center"><Icons.DollarSign className="w-5 h-5 mr-2"/> Catat Pembayaran</h3>
-                                <button onClick={onCancel} className="p-1 rounded-full hover:bg-gray-100"><Icons.X className="w-5 h-5 text-gray-500"/></button>
-                            </div>
-                            
-                            <p className="text-sm text-gray-600 mb-4">Invoice: <span className="font-semibold">{currentInvoice.clientName}</span></p>
-
-                            <div className="space-y-4 mb-4 p-4 bg-indigo-50 rounded-lg">
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700">1. Kas Diterima</label>
-                                        <input type="text" value={formatAmountDisplay(cashReceivedInput)} onChange={(e) => setCashReceivedInput(e.target.value.replace(/[^0-9]/g, ''))} className="mt-1 block w-full p-2 border rounded text-sm"/>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700">2. PPh</label>
-                                        <input type="text" value={formatAmountDisplay(pphDeductionInput)} onChange={(e) => setPphDeductionInput(e.target.value.replace(/[^0-9]/g, ''))} className="mt-1 block w-full p-2 border rounded text-sm"/>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-700">3. Selisih</label>
-                                        <input type="text" value={formatAmountDisplay(adjustmentInput)} onChange={(e) => setAdjustmentInput(e.target.value.replace(/[^0-9]/g, ''))} className="mt-1 block w-full p-2 border rounded text-sm"/>
-                                    </div>
-                                </div>
-                                {adjustment !== 0 && (
-                                    <input type="text" value={adjustmentNote} onChange={(e) => setAdjustmentNote(e.target.value)} placeholder="Catatan Selisih (Wajib)" className="w-full p-2 text-sm border rounded"/>
-                                )}
-                                <div className="pt-2 border-t border-indigo-200 text-sm">
-                                    <div className="flex justify-between font-bold text-red-600"><span>Sisa Saat Ini:</span><span>{formatRupiah(totalOutstanding)}</span></div>
-                                    <div className="flex justify-between font-bold text-indigo-600"><span>Total Diterapkan:</span><span>{formatRupiah(totalAppliedThisTx)}</span></div>
-                                    <div className="flex justify-between font-bold text-gray-800"><span>Sisa Akhir (Proyeksi):</span><span>{formatRupiah(projectedOutstanding)}</span></div>
-                                </div>
-                            </div>
-                            
-                            <div className="space-y-2">
-                                <label className="block text-sm font-medium">Tanggal</label>
-                                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full p-2 border rounded text-sm"/>
-                                <label className="block text-sm font-medium">Catatan Histori</label>
-                                <textarea value={note} onChange={(e) => setNote(e.target.value)} rows="2" className="w-full p-2 border rounded text-sm"></textarea>
-                            </div>
-
-                            <div className="flex justify-end space-x-3 mt-6">
-                                <button onClick={onCancel} className="px-4 py-2 text-sm bg-gray-100 rounded">Batal</button>
-                                <button onClick={handleSubmit} disabled={isSubmitDisabled} className="px-4 py-2 text-sm text-white bg-indigo-600 rounded disabled:opacity-50">Simpan</button>
-                            </div>
-                        </div>
+            const s = statusMap[status] || statusMap['DRAFT'];
+            return `<span class="px-2.5 py-0.5 rounded-full text-xs font-medium border ${s.color}">${s.text}</span>`;
+        };
+        const showLoading = (show) => {
+            const container = document.getElementById('app-container');
+            if (show) {
+                container.innerHTML = `
+                    <div class="min-h-screen flex items-center justify-center">
+                        <svg class="animate-spin -ml-1 mr-3 h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-lg font-medium text-blue-600">Memuat data...</span>
                     </div>
-                </div>
-            );
+                `;
+            }
         };
 
-        // --- MAIN APP COMPONENT ---
-        const App = () => {
-            const [invoices, setInvoices] = React.useState([]);
-            const [clients, setClients] = React.useState([]);
-            const [loading, setLoading] = React.useState(true);
-            const [activeView, setActiveView] = React.useState('DASHBOARD');
-            const [selectedInvoice, setSelectedInvoice] = React.useState(null);
-            const [filterClient, setFilterClient] = React.useState('');
-            const [filterProject, setFilterProject] = React.useState('');
-            
-            const [isPaymentModalOpen, setIsPaymentModalOpen] = React.useState(false);
-            const [modalContext, setModalContext] = React.useState(null);
-            const [errorMsg, setErrorMsg] = React.useState(null);
-            const [isDemoMode, setIsDemoMode] = React.useState(false);
+        // --- 4. SUPABASE CRUD & SEEDING ---
 
-            // Fetch Data from Supabase
-            const fetchData = async () => {
-                setLoading(true);
-                let usingMock = false;
-                try {
-                    // 1. Try Fetch Clients
-                    let { data: clientsData, error: errClients } = await supabase.from('clients').select('*');
-                    
-                    if (errClients) {
-                        console.warn("Error fetching clients (likely table missing), switching to mock:", errClients);
-                        setClients(getMockClients());
-                        usingMock = true;
-                    } else if (!clientsData || clientsData.length === 0) {
-                        // Table exists but empty, try to seed
-                        const mocks = getMockClients();
-                        const { error: seedError } = await supabase.from('clients').insert(mocks.map(c => ({ id: c.id, data: c })));
-                        if (seedError) {
-                             console.warn("Seeding failed, using local mock:", seedError);
-                             setClients(mocks);
-                             usingMock = true;
-                        } else {
-                             setClients(mocks);
-                        }
-                    } else {
-                        setClients(clientsData.map(row => row.data));
-                    }
+        // Fungsi untuk seeding data ke Supabase
+        async function seedDatabase() {
+            try {
+                // 1. Cek dan Seed Clients
+                let { data: clients, error: clientError } = await supabase.from('clients').select('id');
+                if (clientError) throw clientError;
 
-                    // 2. Fetch Invoices
-                    let { data: invData, error: errInv } = await supabase.from('invoices').select('*');
-                    
-                    if (errInv) {
-                        console.warn("Error fetching invoices, switching to mock:", errInv);
-                        setInvoices(getMockInvoices());
-                        usingMock = true;
-                    } else if (!invData || invData.length === 0) {
-                        const mocks = getMockInvoices();
-                         const { error: seedError } = await supabase.from('invoices').insert(mocks.map(i => ({ id: i.id, data: i })));
-                         if (seedError) {
-                             setInvoices(mocks);
-                             usingMock = true;
-                         } else {
-                             setInvoices(mocks);
-                         }
-                    } else {
-                        setInvoices(invData.map(row => row.data));
-                    }
-
-                    if (usingMock) {
-                        setIsDemoMode(true);
-                    }
-
-                } catch (err) {
-                    console.error("Unexpected error, falling back to mocks:", err);
-                    setClients(getMockClients());
-                    setInvoices(getMockInvoices());
-                    setIsDemoMode(true);
-                } finally {
-                    setLoading(false);
+                if (clients.length === 0) {
+                    console.log('Seeding clients...');
+                    const { error } = await supabase.from('clients').insert(mockData.clients);
+                    if (error) throw error;
+                    // Ambil kembali clients yang sudah di-insert untuk FK mapping
+                    ({ data: clients } = await supabase.from('clients').select('*')); 
                 }
-            };
-
-            React.useEffect(() => {
-                fetchData();
-            }, []);
-
-            // Update Logic
-            const handleUpdate = async (id, payload) => {
-                const invoice = invoices.find(i => i.id === id);
-                if (!invoice) return;
-
-                let updatedData = { ...invoice };
+                state.clients = clients; // Update state clients
                 
-                // Handle Payment
-                if (payload.cashReceived !== undefined) {
-                    const paymentTx = {
-                        id: Date.now().toString(),
-                        ...payload,
-                        appliedAmount: payload.cashReceived + payload.pphDeduction + payload.adjustmentAmount,
-                        processedBy: 'Admin'
-                    };
-                    
-                    const prevHistory = invoice.paymentHistory || [];
-                    const newPaymentHistory = [...prevHistory, paymentTx];
-                    const totalReceived = newPaymentHistory.reduce((sum, tx) => sum + tx.appliedAmount, 0);
-                    const outstanding = invoice.totalAmountExclPPN - totalReceived;
+                // 2. Cek dan Seed Invoices
+                let { data: invoices, error: invoiceError } = await supabase.from('invoices').select('id');
+                if (invoiceError) throw invoiceError;
 
-                    updatedData.paymentHistory = newPaymentHistory;
-                    updatedData.amountReceived = totalReceived;
-                    updatedData.status = outstanding <= 0 ? InvoiceStatus.PAID : InvoiceStatus.PARTIAL_PAID;
-                    
-                    // Add to history log
-                    updatedData.history.push({ note: `Pembayaran dicatat: ${formatRupiah(paymentTx.appliedAmount)}`, date: new Date().toLocaleString(), user: 'Admin' });
-                } 
-                // Handle Status Update / Edit
-                else {
-                   updatedData = { ...updatedData, ...payload };
-                   if (payload.note) {
-                       updatedData.history.push({ note: payload.note, date: new Date().toLocaleString(), user: 'Admin' });
-                   }
+                if (invoices.length === 0) {
+                    console.log('Seeding invoices...');
+                    const invoicesToInsert = mockData.invoices.map(inv => {
+                        const client = clients.find(c => c.client_name === inv.client_name);
+                        return { 
+                            ...inv, 
+                            client_id: client ? client.id : null, // Tambahkan client_id
+                            history: JSON.stringify(inv.history) // Supabase butuh JSON string
+                        };
+                    });
+                    const { error } = await supabase.from('invoices').insert(invoicesToInsert);
+                    if (error) throw error;
                 }
+                
+                console.log('Database seeding complete or skipped.');
 
-                // Optimistic Update (Update Local State First)
-                setInvoices(prev => prev.map(i => i.id === id ? updatedData : i));
-                if (selectedInvoice && selectedInvoice.id === id) setSelectedInvoice(updatedData);
-                setIsPaymentModalOpen(false);
+            } catch (error) {
+                console.error('Error during database seeding:', error.message);
+            }
+        }
 
-                // Try Supabase Update (JSONB update) if not in demo mode
-                if (!isDemoMode) {
-                    const { error } = await supabase.from('invoices').update({ data: updatedData }).eq('id', id);
-                    if (error) {
-                        console.warn("Gagal menyimpan ke Supabase (Mungkin tabel tidak ada), data lokal tetap diupdate.", error);
-                        // No alert needed, keeps UX smooth
-                    }
-                }
-            };
+        // Fungsi untuk mengambil semua data
+        async function fetchData() {
+            showLoading(true);
+            try {
+                // Ambil semua invoice
+                let { data: invoices, error: invError } = await supabase
+                    .from('invoices')
+                    .select('*')
+                    .order('date_created', { ascending: false });
 
-            // --- VIEW HELPERS ---
-            const filteredInvoices = React.useMemo(() => {
-                return invoices.filter(inv => {
-                    if (filterClient && inv.clientId !== filterClient) return false;
-                    const outstanding = inv.totalAmountExclPPN - inv.amountReceived;
-                    const isOverdue = inv.status !== 'Lunas' && new Date(inv.dueDate) < new Date();
-                    inv.isOverdue = isOverdue;
-                    inv.outstandingBalance = outstanding;
+                if (invError) throw invError;
+
+                // Ambil semua klien
+                let { data: clients, error: clientError } = await supabase
+                    .from('clients')
+                    .select('client_name, project_name, project_activity')
+                    .order('client_name', { ascending: true });
+
+                if (clientError) throw clientError;
+
+                // Parse history JSON string menjadi array objek
+                state.invoices = invoices.map(inv => ({
+                    ...inv,
+                    history: inv.history ? JSON.parse(inv.history) : [],
+                    total_amount: calculateTotal(inv.amount_base),
+                    sisa_bayar: calculateTotal(inv.amount_base) - inv.amount_paid
+                }));
+                state.clients = clients;
+                
+                updateUI();
+            } catch (error) {
+                console.error('Error fetching data:', error.message);
+                document.getElementById('app-container').innerHTML = `<div class="p-10 text-center text-red-600">Gagal mengambil data: ${error.message}</div>`;
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        // Fungsi untuk update status invoice (dengan konfirmasi)
+        async function updateInvoiceStatus(id, newStatus) {
+            const invoice = state.invoices.find(inv => inv.id === id);
+            if (!invoice) return console.error('Invoice tidak ditemukan');
+
+            let updatePayload = { status: newStatus };
+            if (newStatus === 'PAID') {
+                updatePayload.date_paid = new Date().toISOString().split('T')[0];
+                updatePayload.amount_paid = invoice.total_amount;
+            } else if (newStatus === 'DRAFT') {
+                updatePayload.date_paid = null;
+                updatePayload.amount_paid = 0;
+            }
+
+            try {
+                const { error } = await supabase
+                    .from('invoices')
+                    .update(updatePayload)
+                    .eq('id', id);
+
+                if (error) throw error;
+                await fetchData(); // Refresh data setelah update
+                if (state.currentView === 'detail') navigateTo('detail', id); // Tetap di detail jika sedang di detail
+            } catch (error) {
+                console.error('Gagal update status:', error.message);
+            }
+        }
+
+        // Fungsi untuk menambah histori
+        async function addHistoryNote(id, note) {
+            const invoice = state.invoices.find(inv => inv.id === id);
+            if (!invoice) return console.error('Invoice tidak ditemukan');
+
+            const newHistory = [...invoice.history, note];
+            try {
+                const { error } = await supabase
+                    .from('invoices')
+                    .update({ history: JSON.stringify(newHistory) })
+                    .eq('id', id);
+
+                if (error) throw error;
+                await fetchData(); // Refresh data
+                navigateTo('detail', id); // Kembali ke detail
+            } catch (error) {
+                console.error('Gagal menambah histori:', error.message);
+            }
+        }
+
+        // Fungsi untuk mengupdate jumlah pembayaran
+        async function updatePayment(id, amountPaid) {
+            try {
+                const { error } = await supabase
+                    .from('invoices')
+                    .update({ amount_paid: amountPaid })
+                    .eq('id', id);
+
+                if (error) throw error;
+                await fetchData();
+                navigateTo('detail', id);
+            } catch (error) {
+                console.error('Gagal update pembayaran:', error.message);
+            }
+        }
+
+
+        // --- 5. UI & VIEW MANAGEMENT (ROUTING) ---
+
+        // Fungsi utama untuk mengganti tampilan
+        function navigateTo(view, invoiceId = null) {
+            state.currentView = view;
+            if (view === 'detail' && invoiceId) {
+                state.selectedInvoice = state.invoices.find(inv => inv.id === invoiceId);
+            } else {
+                state.selectedInvoice = null;
+            }
+            updateUI();
+        }
+
+        // Render Dropdown Filter
+        function renderFilters() {
+            const getUniqueValues = (key) => [...new Set(state.clients.map(c => c[key]).filter(Boolean))].sort();
+            
+            const clientOptions = getUniqueValues('client_name').map(val => `<option value="${val}">${val}</option>`).join('');
+            const projectOptions = getUniqueValues('project_name').map(val => `<option value="${val}">${val}</option>`).join('');
+            const activityOptions = getUniqueValues('project_activity').map(val => `<option value="${val}">${val}</option>`).join('');
+
+            return `
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                    ${renderFilterDropdown('client', 'Klien', clientOptions)}
+                    ${renderFilterDropdown('project', 'Nama Proyek', projectOptions)}
+                    ${renderFilterDropdown('activity', 'Kegiatan Proyek', activityOptions)}
+                </div>
+            `;
+        }
+
+        function renderFilterDropdown(key, label, options) {
+            return `
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase mb-1">${label}</label>
+                    <select id="filter-${key}" data-filter-key="${key}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500 bg-white" onchange="handleFilterChange(this)">
+                        <option value="all">Semua ${label}</option>
+                        ${options}
+                    </select>
+                </div>
+            `;
+        }
+        
+        function handleFilterChange(element) {
+            const key = element.getAttribute('data-filter-key');
+            state.filters[key] = element.value;
+            updateUI();
+        }
+
+        // Fungsi untuk merender tampilan Login
+        function renderLogin() {
+            return `
+                <div class="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+                    <div class="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
+                        <div class="bg-blue-600 p-8 text-center">
+                            <div class="bg-white/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
+                                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2l4-4m6 2a9 9 0 11-18 0a9 9 0 0118 0z"></path></svg>
+                            </div>
+                            <h1 class="text-2xl font-bold text-white">Kontrol Penagihan</h1>
+                            <p class="text-blue-100 mt-2 text-sm">Aplikasi Supabase & HTML</p>
+                        </div>
+                        <div class="p-8">
+                            <form id="login-form" class="space-y-6">
+                                <div id="login-error" class="hidden bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856a2 2 0 001.789-3.418L13.78 6.582a2 2 0 00-3.56 0L4.223 16.582A2 2 0 006 20.001z"></path></svg>
+                                    <span>Username atau password salah.</span>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                                    <input type="text" id="username" class="w-full pl-4 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="admin / staff">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                    <input type="password" id="password" class="w-full pl-4 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="••••••">
+                                </div>
+                                <button type="submit" class="w-full bg-blue-600 text-white py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">Masuk</button>
+                                <div class="text-center text-xs text-gray-400 mt-4">
+                                    Coba login: <b>admin/admin</b> atau <b>staff/staff</b>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Fungsi untuk merender tampilan Dashboard
+        function renderDashboard() {
+            const filteredInvoices = state.invoices.filter(inv => {
+                const clientMatch = state.filters.client === 'all' || inv.client_name === state.filters.client;
+                const projectMatch = state.filters.project === 'all' || inv.project_name === state.filters.project;
+                const activityMatch = state.filters.activity === 'all' || inv.project_activity === state.filters.activity;
+                return clientMatch && projectMatch && activityMatch && inv.status !== 'PAID';
+            });
+
+            const outstandingFinal = filteredInvoices.filter(inv => inv.status === 'PENDING' || inv.status === 'OVERDUE');
+            const progresKlaim = filteredInvoices.filter(inv => inv.status === 'DRAFT');
+
+            const totalOutstanding = outstandingFinal.reduce((sum, inv) => sum + inv.total_amount, 0);
+            const totalClaim = progresKlaim.reduce((sum, inv) => sum + inv.total_amount, 0);
+            const countOverdue = outstandingFinal.filter(inv => inv.status === 'OVERDUE').length;
+
+            return `
+                <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+                        <div class="flex items-center gap-3">
+                            <div class="bg-blue-600 p-2 rounded-lg">
+                                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2l4-4m6 2a9 9 0 11-18 0a9 9 0 0118 0z"></path></svg>
+                            </div>
+                            <div>
+                                <h1 class="text-xl font-bold text-gray-900 leading-none">Dashboard Penagihan</h1>
+                                <span class="text-xs text-gray-500 font-medium">Data Realtime dari Supabase</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="text-right hidden sm:block">
+                                <div class="text-sm font-bold text-gray-900">${state.user.name}</div>
+                                <div class="text-xs text-gray-500 uppercase tracking-wider">${state.user.role}</div>
+                            </div>
+                            <div class="h-8 w-px bg-gray-200 mx-1"></div>
+                            <button onclick="handleLogout()" class="text-gray-500 hover:text-red-600 transition-colors p-2 rounded-full hover:bg-red-50" title="Keluar">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4h-14m4 8v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+                <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                     
-                    const isFinalOutstanding = inv.invoiceType === 'FINAL' && inv.status !== InvoiceStatus.PAID;
-                    const isProgress = inv.invoiceType === 'PROGRESS';
-                    return isFinalOutstanding || isProgress;
-                }).sort((a, b) => new Date(b.invoiceDate) - new Date(a.invoiceDate));
-            }, [invoices, filterClient]);
-
-            const stats = React.useMemo(() => {
-                const finals = filteredInvoices.filter(i => i.invoiceType === 'FINAL');
-                const progress = filteredInvoices.filter(i => i.invoiceType === 'PROGRESS');
-                return {
-                    outstanding: finals.reduce((acc, curr) => acc + curr.outstandingBalance, 0),
-                    progress: progress.reduce((acc, curr) => acc + curr.totalAmountExclPPN, 0),
-                    overdue: finals.filter(i => i.isOverdue).length
-                };
-            }, [filteredInvoices]);
-
-
-            if (loading) return <div className="h-screen flex items-center justify-center"><Icons.Loader className="animate-spin w-10 h-10 text-indigo-600"/></div>;
-
-            return (
-                <div className="max-w-5xl mx-auto p-4 pb-20">
-                    {/* HEADER */}
-                    <div className="flex justify-between items-center mb-6">
-                        <h1 className="text-xl font-bold text-gray-800 flex items-center">
-                           <Icons.CreditCard className="w-6 h-6 mr-2 text-indigo-600"/> Monitor Tagihan
-                        </h1>
-                        {isDemoMode ? 
-                            <div className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded border border-yellow-200 font-bold">Mode Demo (Lokal)</div> :
-                            <div className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded border border-green-200">Online</div>
-                        }
+                    <!-- Top Stats -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-xl shadow-lg shadow-red-300/50 p-6 cursor-pointer hover:shadow-red-400 transition-shadow" onclick="filterByStatus('Outstanding')">
+                            <p class="text-red-100 font-medium mb-1">Total Outstanding Final</p>
+                            <p class="text-3xl font-bold">${formatIDR(totalOutstanding)}</p>
+                            <p class="text-sm mt-2 flex items-center gap-1 text-red-100">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.657 0 3 .895 3 2s-1.343 2-3 2v2m0-6c-1.657 0-3 .895-3 2s1.343 2 3 2m-3 6h6m-3-2v4"></path></svg>
+                                ${outstandingFinal.length} Invoice
+                            </p>
+                        </div>
+                        <div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl shadow-lg shadow-blue-300/50 p-6 cursor-pointer hover:shadow-blue-400 transition-shadow" onclick="filterByStatus('Claim')">
+                            <p class="text-blue-100 font-medium mb-1">Total Progres Klaim</p>
+                            <p class="text-3xl font-bold">${formatIDR(totalClaim)}</p>
+                            <p class="text-sm mt-2 flex items-center gap-1 text-blue-100">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                ${progresKlaim.length} Draft
+                            </p>
+                        </div>
+                        <div class="bg-white border-l-4 border-l-orange-500 rounded-xl shadow-sm p-6">
+                            <div class="flex items-center gap-4">
+                                <div class="p-3 bg-orange-50 rounded-full">
+                                    <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856a2 2 0 001.789-3.418L13.78 6.582a2 2 0 00-3.56 0L4.223 16.582A2 2 0 006 20.001z"></path></svg>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500 font-medium">Invoice Jatuh Tempo</p>
+                                    <div class="flex items-baseline gap-2">
+                                        <p class="text-2xl font-bold text-gray-900">${countOverdue}</p>
+                                        <span class="text-sm text-gray-500">Dokumen</span>
+                                    </div>
+                                    <p class="text-xs text-orange-600 mt-1 font-medium">Butuh Tindak Lanjut Segera!</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    {/* MAIN CONTENT */}
-                    {activeView === 'DASHBOARD' ? (
-                        <div className="space-y-4">
-                            {/* SUMMARY CARDS */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                <div className="bg-white p-3 rounded-xl shadow border-b-4 border-indigo-500" onClick={() => document.getElementById('final-table').scrollIntoView()}>
-                                    <p className="text-[10px] font-bold text-gray-500 uppercase">Total Outstanding</p>
-                                    <p className="text-lg font-extrabold text-gray-800 truncate">{formatRupiah(stats.outstanding)}</p>
-                                </div>
-                                <div className="bg-white p-3 rounded-xl shadow border-b-4 border-yellow-500">
-                                    <p className="text-[10px] font-bold text-gray-500 uppercase">Progress Claim</p>
-                                    <p className="text-lg font-extrabold text-gray-800 truncate">{formatRupiah(stats.progress)}</p>
-                                </div>
-                                <div className="bg-white p-3 rounded-xl shadow border-b-4 border-red-500">
-                                    <p className="text-[10px] font-bold text-gray-500 uppercase">Overdue</p>
-                                    <p className="text-lg font-extrabold text-red-600">{stats.overdue} Inv</p>
-                                </div>
-                            </div>
+                    <!-- Filters -->
+                    ${renderFilters()}
 
-                            {/* FILTER */}
-                            <select className="w-full p-2 text-sm border rounded-lg" value={filterClient} onChange={e => setFilterClient(e.target.value)}>
-                                <option value="">Semua Klien</option>
-                                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
+                    <!-- Tab Section -->
+                    <div class="space-y-8">
+                        <!-- Table 1: Outstanding Invoice Final -->
+                        ${renderInvoiceTable('Outstanding Invoice Final', outstandingFinal, true)}
+                        
+                        <!-- Table 2: Progres Klaim -->
+                        ${renderInvoiceTable('Progres Klaim', progresKlaim, false)}
+                    </div>
+                </main>
+            `;
+        }
+        
+        // Render tabel utama untuk dashboard
+        function renderInvoiceTable(title, invoices, isOutstanding) {
+            const tableRows = invoices.map(inv => {
+                const total = inv.total_amount;
+                const lastHistory = inv.history && inv.history.length > 0 ? inv.history[inv.history.length - 1] : null;
+                const aging = getAging(inv.date_created, inv.date_paid);
+                
+                let agingColor = "text-gray-700";
+                if (isOutstanding && aging > 30) agingColor = "text-red-600 font-bold";
 
-                            {/* TABLES */}
-                            <div id="final-table" className="bg-white rounded-xl shadow overflow-hidden">
-                                <div className="p-3 border-b bg-gray-50 text-sm font-bold text-gray-700">Outstanding Final</div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-xs">
-                                        <thead className="bg-gray-100 text-gray-500"><tr><th className="p-2">Invoice</th><th className="p-2">Klien</th><th className="p-2 text-right">Sisa</th></tr></thead>
-                                        <tbody className="divide-y">
-                                            {filteredInvoices.filter(i => i.invoiceType === 'FINAL').map(inv => (
-                                                <tr key={inv.id} onClick={() => { setSelectedInvoice(inv); setActiveView('DETAIL'); }} className="hover:bg-indigo-50 cursor-pointer">
-                                                    <td className="p-2 font-medium">{inv.invoiceNumber}<br/><span className={inv.isOverdue ? 'text-red-500' : 'text-gray-500'}>{new Date(inv.dueDate).toLocaleDateString('id-ID')}</span></td>
-                                                    <td className="p-2 truncate max-w-[120px]">{inv.clientName}</td>
-                                                    <td className="p-2 text-right font-bold text-indigo-600">{formatRupiah(inv.outstandingBalance)}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        // DETAIL VIEW
-                        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-                             <div className="p-4 border-b flex justify-between items-start bg-gray-50">
-                                <div>
-                                    <h2 className="text-lg font-bold">{selectedInvoice.invoiceNumber || 'Draft'}</h2>
-                                    <span className={`text-xs px-2 py-0.5 rounded ${selectedInvoice.status === InvoiceStatus.PAID ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{selectedInvoice.status}</span>
-                                </div>
-                                <button onClick={() => setActiveView('DASHBOARD')} className="p-1 bg-gray-200 rounded-full"><Icons.X className="w-5 h-5"/></button>
-                            </div>
-                            
-                            <div className="p-4 space-y-6">
-                                {/* Financials */}
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-indigo-50 rounded-lg">
-                                    <div><p className="text-xs text-gray-500">Total Tagihan</p><p className="font-bold">{formatRupiah(selectedInvoice.totalAmountExclPPN)}</p></div>
-                                    <div><p className="text-xs text-gray-500">Sudah Diterima</p><p className="font-bold text-green-600">{formatRupiah(selectedInvoice.amountReceived)}</p></div>
-                                    <div><p className="text-xs text-gray-500">Sisa</p><p className="font-bold text-red-600">{formatRupiah(selectedInvoice.totalAmountExclPPN - selectedInvoice.amountReceived)}</p></div>
-                                </div>
+                return `
+                    <tr class="hover:bg-gray-50 transition-colors cursor-pointer" onclick="navigateTo('detail', ${inv.id})">
+                        <td class="p-4">${inv.client_name}</td>
+                        <td class="p-4 text-sm font-mono">${inv.invoice_number}</td>
+                        <td class="p-4 text-center">
+                            <span class="text-lg ${agingColor}">${aging}</span>
+                            <span class="text-[10px] text-gray-400 block">Hari</span>
+                        </td>
+                        <td class="p-4 text-right font-mono font-bold text-gray-900">${formatIDR(total)}</td>
+                        <td class="p-4 text-center">${getStatusBadge(inv.status)}</td>
+                        <td class="p-4 text-sm text-gray-500">${lastHistory ? formatDate(lastHistory.date) + ': ' + lastHistory.text.substring(0, 30) + '...' : '-'}</td>
+                    </tr>
+                `;
+            }).join('');
 
-                                {/* Info Form */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                    <div><label className="block text-xs text-gray-500">Klien</label><div className="font-medium">{selectedInvoice.clientName}</div></div>
-                                    <div><label className="block text-xs text-gray-500">Proyek</label><div className="font-medium">{selectedInvoice.projectName}</div></div>
-                                    <div><label className="block text-xs text-gray-500">Tanggal</label><input type="date" className="w-full border p-1 rounded" defaultValue={selectedInvoice.invoiceDate} onChange={(e) => handleUpdate(selectedInvoice.id, { invoiceDate: e.target.value })} /></div>
-                                    {selectedInvoice.invoiceType === 'FINAL' && (
-                                         <div><label className="block text-xs text-gray-500">Link Dokumen</label>
-                                            <div className="flex space-x-2">
-                                                <input type="text" className="flex-1 border p-1 rounded" defaultValue={selectedInvoice.documentLink} onBlur={(e) => handleUpdate(selectedInvoice.id, { documentLink: e.target.value })} placeholder="http://" />
-                                                {selectedInvoice.documentLink && <a href={selectedInvoice.documentLink} target="_blank" className="p-1 bg-blue-100 text-blue-600 rounded"><Icons.Link className="w-4 h-4"/></a>}
-                                            </div>
-                                         </div>
-                                    )}
-                                    <div className="md:col-span-2"><label className="block text-xs text-gray-500">Deskripsi</label><textarea className="w-full border p-2 rounded" rows="3" defaultValue={selectedInvoice.description} onBlur={(e) => handleUpdate(selectedInvoice.id, { description: e.target.value })}></textarea></div>
-                                </div>
-
-                                {/* Actions */}
-                                <div className="flex flex-wrap gap-2 pt-4 border-t">
-                                    {selectedInvoice.invoiceType === 'FINAL' && (selectedInvoice.totalAmountExclPPN - selectedInvoice.amountReceived > 0) && (
-                                        <button onClick={() => { setModalContext({ invoice: selectedInvoice, action: 'PAYMENT' }); setIsPaymentModalOpen(true); }} className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 shadow">
-                                            <Icons.DollarSign className="w-4 h-4 mr-2"/> Catat Pembayaran
-                                        </button>
-                                    )}
-                                    {selectedInvoice.invoiceType === 'PROGRESS' && selectedInvoice.status === InvoiceStatus.SUBMITTED && (
-                                        <button onClick={() => handleUpdate(selectedInvoice.id, { status: InvoiceStatus.APPROVED, note: 'Status updated to Final' })} className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 shadow">
-                                            <Icons.CheckCircle className="w-4 h-4 mr-2"/> Ubah ke Final
-                                        </button>
-                                    )}
-                                </div>
-                                
-                                {/* Payment History */}
-                                {selectedInvoice.paymentHistory && selectedInvoice.paymentHistory.length > 0 && (
-                                    <div className="mt-4">
-                                        <h4 className="font-bold text-sm flex items-center mb-2"><Icons.List className="w-4 h-4 mr-2"/> Riwayat Pembayaran</h4>
-                                        <div className="bg-gray-50 rounded-lg p-2 max-h-40 overflow-y-auto text-xs space-y-2">
-                                            {selectedInvoice.paymentHistory.map((pay, idx) => (
-                                                <div key={idx} className="border-b pb-2 last:border-0">
-                                                    <div className="flex justify-between font-bold text-green-700">
-                                                        <span>+{formatRupiah(pay.appliedAmount)}</span>
-                                                        <span className="text-gray-500 font-normal">{new Date(pay.date).toLocaleDateString('id-ID')}</span>
-                                                    </div>
-                                                    <div className="text-gray-600">Cash: {formatRupiah(pay.cashReceived)} | PPh: {formatRupiah(pay.pphDeduction)}</div>
-                                                    {pay.note && <div className="text-gray-500 italic">"{pay.note}"</div>}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* MODAL */}
-                    <PaymentModal 
-                        isOpen={isPaymentModalOpen} 
-                        invoice={modalContext?.invoice} 
-                        onUpdate={handleUpdate}
-                        onCancel={() => setIsPaymentModalOpen(false)}
-                    />
+            return `
+                <div class="bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden">
+                    <h3 class="text-lg font-bold p-4 bg-gray-50 border-b">${title}</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500 font-semibold">
+                                    <th class="p-4 w-1/4">Klien</th>
+                                    <th class="p-4 w-1/6">Nomor Dokumen</th>
+                                    <th class="p-4 text-center w-20">Umur</th>
+                                    <th class="p-4 text-right w-1/6">Total Tagihan</th>
+                                    <th class="p-4 text-center w-1/6">Status</th>
+                                    <th class="p-4 w-1/4">Histori Terakhir</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                ${tableRows.length > 0 ? tableRows : `
+                                <tr><td colspan="6" class="p-8 text-center text-gray-400">Tidak ada data ${title} yang sesuai filter.</td></tr>
+                                `}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            );
+            `;
+        }
+
+        // Fungsi untuk merender tampilan Detail Invoice
+        function renderDetail() {
+            const inv = state.selectedInvoice;
+            if (!inv) return '<div class="p-10 text-center text-red-600">Invoice tidak ditemukan.</div>';
+
+            const isPaid = inv.status === 'PAID';
+            const total = inv.total_amount;
+            const sisaBayar = total - inv.amount_paid;
+
+            let statusAction = '';
+            if (state.user.role === 'admin') {
+                if (inv.status === 'DRAFT') {
+                    statusAction = `<button onclick="showConfirmation('final', ${inv.id})" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2l4-4m6 2a9 9 0 11-18 0a9 9 0 0118 0z"></path></svg>
+                                        Finalisasi Invoice
+                                    </button>`;
+                } else if (!isPaid) {
+                    statusAction = `<button onclick="showConfirmation('paid', ${inv.id})" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.657 0 3 .895 3 2s-1.343 2-3 2v2m0-6c-1.657 0-3 .895-3 2s1.343 2-3 2m-3 6h6m-3-2v4"></path></svg>
+                                        Set Lunas (Pembayaran Penuh)
+                                    </button>`;
+                }
+            }
+
+
+            return `
+                <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+                        <button onclick="navigateTo('dashboard')" class="text-gray-500 hover:text-blue-600 flex items-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                            <span class="text-sm font-medium hidden sm:inline">Kembali ke Dashboard</span>
+                        </button>
+                        <div class="flex items-center gap-4">
+                            ${statusAction}
+                            <button onclick="handleLogout()" class="text-gray-500 hover:text-red-600 transition-colors p-2 rounded-full hover:bg-red-50" title="Keluar">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4h-14m4 8v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+                <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                    <div class="bg-white rounded-xl shadow-lg p-6 mb-8 border-t-4 ${isPaid ? 'border-t-green-500' : (inv.status === 'OVERDUE' ? 'border-t-red-500' : 'border-t-blue-500')}">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h2 class="text-3xl font-extrabold text-gray-900">${inv.invoice_number}</h2>
+                                <p class="text-lg text-gray-600">${inv.client_name}</p>
+                            </div>
+                            ${getStatusBadge(inv.status)}
+                        </div>
+
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-6 border-b pb-4">
+                            <div><span class="text-gray-500 block">Proyek</span><span class="font-medium">${inv.project_name}</span></div>
+                            <div><span class="text-gray-500 block">Kegiatan</span><span class="font-medium">${inv.project_activity}</span></div>
+                            <div><span class="text-gray-500 block">Tanggal Dibuat</span><span class="font-medium">${formatDate(inv.date_created)}</span></div>
+                            <div><span class="text-gray-500 block">Jatuh Tempo</span><span class="font-bold ${inv.status === 'OVERDUE' ? 'text-red-600' : ''}">${formatDate(inv.date_due)}</span></div>
+                        </div>
+
+                        <!-- Summary Pembayaran -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
+                            <div class="p-3 bg-gray-50 rounded-lg border">
+                                <span class="text-xs text-gray-500 block">Total Tagihan (DPP + PPN)</span>
+                                <span class="text-xl font-bold text-gray-800">${formatIDR(total)}</span>
+                            </div>
+                            <div class="p-3 bg-gray-50 rounded-lg border">
+                                <span class="text-xs text-gray-500 block">Sudah Dibayar</span>
+                                <span class="text-xl font-bold ${inv.amount_paid > 0 ? 'text-green-600' : 'text-gray-400'}">${formatIDR(inv.amount_paid)}</span>
+                            </div>
+                            <div class="p-3 bg-gray-50 rounded-lg border ${sisaBayar > 0 ? 'border-red-300 bg-red-50' : 'border-green-300 bg-green-50'}">
+                                <span class="text-xs ${sisaBayar > 0 ? 'text-red-700' : 'text-green-700'} block font-bold">Sisa Belum Dibayar</span>
+                                <span class="text-2xl font-extrabold ${sisaBayar > 0 ? 'text-red-700' : 'text-green-700'}">${formatIDR(sisaBayar)}</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Form Update Pembayaran Parsial (Hanya Admin & Belum Lunas) -->
+                        ${!isPaid && state.user.role === 'admin' ? `
+                            <div class="mt-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                                <h4 class="text-sm font-bold text-yellow-800 mb-2">Update Pembayaran Parsial</h4>
+                                <div class="flex gap-2">
+                                    <input type="number" id="partial-payment" placeholder="Nominal Parsial (Contoh: 500000)" class="w-full border border-yellow-300 rounded-lg px-3 py-2 text-sm">
+                                    <button onclick="handlePartialPayment(${inv.id})" class="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-yellow-700 flex-shrink-0">
+                                        Update Bayar
+                                    </button>
+                                </div>
+                                <p class="text-xs text-yellow-700 mt-1">Total yang sudah dibayar: ${formatIDR(inv.amount_paid)}</p>
+                            </div>
+                        ` : ''}
+
+                    </div>
+
+                    <!-- History Section -->
+                    <div class="bg-white rounded-xl shadow-md p-6">
+                        <div class="flex justify-between items-center mb-4 border-b pb-3">
+                            <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0a9 9 0 0118 0z"></path></svg>
+                                Histori Penagihan
+                            </h3>
+                            <button onclick="showHistoryModal()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                                Tambah Catatan
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-4 max-h-96 overflow-y-auto pr-2">
+                            ${inv.history && inv.history.length > 0 ? 
+                                [...inv.history].reverse().map(item => `
+                                    <div class="flex gap-4 text-sm bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
+                                        <div class="text-gray-500 font-mono text-xs whitespace-nowrap pt-0.5">${formatDate(item.date)}</div>
+                                        <div class="text-gray-800 flex-1">${item.text}</div>
+                                    </div>
+                                `).join('')
+                                : 
+                                `<div class="text-center text-gray-400 py-4 text-sm italic">Belum ada catatan histori penagihan.</div>`
+                            }
+                        </div>
+                    </div>
+                </main>
+            `;
+        }
+
+        // --- 6. MODAL HANDLERS ---
+        
+        // Menampilkan Modal Konfirmasi
+        function showConfirmation(actionType, id) {
+            let message = '';
+            let okText = 'Lanjutkan';
+            let okColor = 'bg-red-600 hover:bg-red-700';
+
+            if (actionType === 'final') {
+                message = `Anda akan memfinalisasi Invoice/Klaim **${state.selectedInvoice.invoice_number}** menjadi status **PENDING** (Outstanding Final). Tindakan ini tidak dapat dibatalkan. Lanjutkan?`;
+                okText = 'Finalisasi';
+                okColor = 'bg-green-600 hover:bg-green-700';
+            } else if (actionType === 'paid') {
+                message = `Anda akan mengubah status **${state.selectedInvoice.invoice_number}** menjadi **LUNAS** (PAID). Ini akan mengupdate tanggal bayar dan jumlah bayar penuh. Lanjutkan?`;
+                okText = 'Konfirmasi Lunas';
+                okColor = 'bg-blue-600 hover:bg-blue-700';
+            } else {
+                return;
+            }
+
+            document.getElementById('confirm-message').innerHTML = message;
+            const okButton = document.getElementById('confirm-ok');
+            okButton.textContent = okText;
+            okButton.className = `px-4 py-2 rounded-lg text-white font-medium text-sm ${okColor}`;
+            
+            // Atur aksi konfirmasi
+            state.confirmationAction = () => {
+                if (actionType === 'final') {
+                    updateInvoiceStatus(id, 'PENDING');
+                } else if (actionType === 'paid') {
+                    updateInvoiceStatus(id, 'PAID');
+                }
+                document.getElementById('confirmation-modal').classList.add('hidden');
+                state.confirmationAction = null;
+            };
+
+            document.getElementById('confirmation-modal').classList.remove('hidden');
+        }
+
+        // Menutup Modal Konfirmasi
+        document.getElementById('confirm-cancel').onclick = () => {
+            document.getElementById('confirmation-modal').classList.add('hidden');
+            state.confirmationAction = null;
         };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        // Aksi OK Modal Konfirmasi
+        document.getElementById('confirm-ok').onclick = () => {
+            if (state.confirmationAction) {
+                state.confirmationAction();
+            }
+        };
+
+        // Menampilkan Modal Histori
+        function showHistoryModal() {
+            document.getElementById('history-date').value = new Date().toISOString().split('T')[0];
+            document.getElementById('history-text').value = '';
+            document.getElementById('history-modal').classList.remove('hidden');
+        }
+
+        // Menutup Modal Histori
+        document.getElementById('history-close').onclick = () => {
+            document.getElementById('history-modal').classList.add('hidden');
+        };
+
+        // Aksi Simpan Histori
+        document.getElementById('history-save').onclick = () => {
+            const date = document.getElementById('history-date').value;
+            const text = document.getElementById('history-text').value.trim();
+            if (text && state.selectedInvoice) {
+                const note = { date, text };
+                addHistoryNote(state.selectedInvoice.id, note);
+                document.getElementById('history-modal').classList.add('hidden');
+            } else {
+                // Menggunakan custom modal instead of alert
+                showConfirmationModalCustom(
+                    'Peringatan', 
+                    'Catatan histori tidak boleh kosong. Harap isi catatan Anda.',
+                    'Tutup',
+                    'bg-gray-500 hover:bg-gray-600',
+                    () => {}
+                );
+            }
+        };
+
+        // Handle Pembayaran Parsial
+        function handlePartialPayment(id) {
+            const amountInput = document.getElementById('partial-payment');
+            const amount = parseFloat(amountInput.value);
+            const invoice = state.invoices.find(inv => inv.id === id);
+            const totalBayarSaatIni = invoice.amount_paid || 0;
+            const totalTagihan = invoice.total_amount;
+
+            if (isNaN(amount) || amount <= 0) {
+                showConfirmationModalCustom('Peringatan', 'Nominal pembayaran parsial tidak valid.', 'Tutup', 'bg-gray-500 hover:bg-gray-600', () => {});
+                return;
+            }
+            if (totalBayarSaatIni + amount > totalTagihan) {
+                showConfirmationModalCustom('Peringatan', `Pembayaran melebihi total tagihan (${formatIDR(totalTagihan)}). Harap periksa nominal.`, 'Tutup', 'bg-gray-500 hover:bg-gray-600', () => {});
+                return;
+            }
+
+            const newAmountPaid = totalBayarSaatIni + amount;
+            
+            // Gunakan konfirmasi kustom untuk pembayaran parsial
+            showConfirmationModalCustom('Konfirmasi Pembayaran Parsial', 
+                `Anda akan mencatat pembayaran sebesar ${formatIDR(amount)} untuk invoice ${invoice.invoice_number}. Total pembayaran baru: ${formatIDR(newAmountPaid)}. Lanjutkan?`,
+                'Konfirmasi', 'bg-blue-600 hover:bg-blue-700',
+                () => updatePayment(id, newAmountPaid)
+            );
+        }
+
+        // Fungsi Konfirmasi Custom untuk Parsial Payment/Alert Pengganti
+        function showConfirmationModalCustom(title, message, okText, okColor, action) {
+            document.getElementById('confirmation-modal').querySelector('h3').textContent = title;
+            document.getElementById('confirm-message').innerHTML = message;
+            
+            const okButton = document.getElementById('confirm-ok');
+            okButton.textContent = okText;
+            okButton.className = `px-4 py-2 rounded-lg text-white font-medium text-sm ${okColor}`;
+            
+            // Jika action adalah no-op (misalnya, hanya alert), kita perlu memastikan tombol cancel tersembunyi
+            const cancelButton = document.getElementById('confirm-cancel');
+            if (okText === 'Tutup') {
+                cancelButton.classList.add('hidden');
+            } else {
+                cancelButton.classList.remove('hidden');
+            }
+
+            state.confirmationAction = () => {
+                action();
+                document.getElementById('confirmation-modal').classList.add('hidden');
+                state.confirmationAction = null;
+                cancelButton.classList.remove('hidden'); // Reset cancel button visibility
+            };
+
+            document.getElementById('confirmation-modal').classList.remove('hidden');
+        }
+
+        // Fungsi dummy untuk filterByStatus (diperlukan karena ada onclick di dashboard)
+        function filterByStatus(type) {
+             // Untuk demo sederhana ini, kita hanya akan mereset filter dan memuat ulang UI
+            state.filters = { client: 'all', project: 'all', activity: 'all' };
+            // Anda dapat menambahkan logika filter di sini jika perlu
+            updateUI();
+        }
+
+
+        // --- 7. AUTHENTICATION HANDLERS ---
+
+        function handleLogin(event) {
+            event.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorEl = document.getElementById('login-error');
+
+            if ((username === 'admin' && password === 'admin') || (username === 'staff' && password === 'staff')) {
+                const role = username === 'admin' ? 'admin' : 'staff';
+                const name = username === 'admin' ? 'Administrator Keuangan' : 'Staff Penagihan';
+                state.user = { name, role };
+                localStorage.setItem('user', JSON.stringify(state.user));
+                errorEl.classList.add('hidden');
+                navigateTo('dashboard');
+            } else {
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        function handleLogout() {
+            state.user = null;
+            localStorage.removeItem('user');
+            navigateTo('login');
+        }
+
+        // --- 8. GLOBAL UI UPDATE & INIT ---
+        
+        function updateUI() {
+            const container = document.getElementById('app-container');
+            container.innerHTML = ''; // Bersihkan konten
+
+            if (!state.user) {
+                container.innerHTML = renderLogin();
+                document.getElementById('login-form').onsubmit = handleLogin;
+            } else if (state.currentView === 'dashboard') {
+                container.innerHTML = renderDashboard();
+                // Re-apply filters after rendering
+                ['client', 'project', 'activity'].forEach(key => {
+                    const el = document.getElementById(`filter-${key}`);
+                    if (el) el.value = state.filters[key];
+                });
+            } else if (state.currentView === 'detail') {
+                container.innerHTML = renderDetail();
+            }
+            
+            // Konversi Lucide icons di HTML yang baru dirender
+            lucide.createIcons(); 
+        }
+
+        // Fungsi Inisialisasi Utama
+        window.onload = async () => {
+            // 1. Inisialisasi Supabase
+            // PERBAIKAN: Menggunakan variabel global 'supabase' yang diekspos oleh CDN
+            supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            
+            // 2. Seeding Data (jika tabel kosong)
+            await seedDatabase();
+
+            // 3. Cek Auth dan Load Data
+            if (state.user) {
+                await fetchData();
+            } else {
+                updateUI();
+            }
+        };
     </script>
 </body>
 </html>
