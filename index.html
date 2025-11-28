@@ -1,869 +1,805 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kontrol Penagihan Proyek - Supabase</title>
-    <!-- Load Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Load Supabase Client -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- Load Lucide Icons (as a utility) -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        /* Custom scrollbar for better look */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
-        /* Font for clean look */
-        body { font-family: 'Inter', sans-serif; }
-    </style>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Monitor Tagihan Piutang - Supabase Demo</title>
+
+  <!-- Tailwind via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    .spinner { border: 3px solid rgba(0,0,0,0.08); border-top: 3px solid rgba(59,130,246,1); border-radius:50%; width:18px; height:18px; animation:spin 1s linear infinite; display:inline-block }
+    @keyframes spin { to { transform: rotate(360deg) } }
+    .line-clamp-2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+    /* Simple modal backdrop transition */
+    .modal-backdrop { background: rgba(0,0,0,0.5); }
+  </style>
 </head>
-<body class="bg-gray-50 text-gray-800">
+<body class="bg-slate-50 min-h-screen antialiased">
+  <div id="root" class="p-4 sm:p-8"></div>
 
-    <div id="app-container" class="min-h-screen">
-        <!-- Content will be rendered here by JavaScript -->
-    </div>
+  <!-- React & ReactDOM UMD -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 
-    <!-- Custom Confirmation Modal Structure (Hidden by default) -->
-    <div id="confirmation-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm">
-            <div class="p-6 border-b border-gray-100 flex items-center gap-3">
-                <div class="p-2 bg-yellow-100 rounded-full">
-                    <svg id="confirm-icon" class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856a2 2 0 001.789-3.418L13.78 6.582a2 2 0 00-3.56 0L4.223 16.582A2 2 0 006 20.001z"></path></svg>
-                </div>
-                <h3 class="text-lg font-bold text-gray-900">Konfirmasi Tindakan</h3>
-            </div>
-            <div id="confirm-message" class="p-6 text-gray-700">
-                Apakah Anda yakin ingin melakukan tindakan ini?
-            </div>
-            <div class="p-4 border-t border-gray-100 bg-gray-50 rounded-b-xl flex justify-end gap-2">
-                <button id="confirm-cancel" class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-100 text-sm">Batal</button>
-                <button id="confirm-ok" class="px-4 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 text-sm">Lanjutkan</button>
-            </div>
-        </div>
-    </div>
+  <!-- Supabase client: create and attach to window.supabaseClient (module) -->
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
 
-    <!-- Custom History Modal Structure (Hidden by default) -->
-    <div id="history-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-            <div class="p-6 border-b border-gray-100 flex justify-between items-center">
-                <h3 class="text-lg font-bold text-gray-900">Tambah Catatan Histori</h3>
-                <button id="history-close" class="text-gray-400 hover:text-gray-600">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>
-            <div class="p-6 space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Catatan</label>
-                    <input type="date" id="history-date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Catatan Progres</label>
-                    <textarea id="history-text" rows="3" placeholder="Contoh: Klien setuju dengan nominal, menunggu PIC TTD." class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"></textarea>
-                </div>
-            </div>
-            <div class="p-4 border-t border-gray-100 bg-gray-50 rounded-b-xl flex justify-end">
-                <button id="history-save" class="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 text-sm">Simpan Catatan</button>
-            </div>
-        </div>
-    </div>
+    const SUPABASE_URL = 'https://epitfrqwwsdtqvcxxfgo.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwaXRmcnF3d3NkdHF2Y3h4ZmdvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyNjM0MTksImV4cCI6MjA3OTgzOTQxOX0.-gccKjikjaFXVCQ9W-uj77OlhbKPfJplb81rrTBTID4';
 
-    <script>
-        // --- 1. KONSTANTA & INISIALISASI SUPABASE ---
-        const SUPABASE_URL = 'https://epitfrqwwsdtqvcxxfgo.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwaXRmcnF3d3NkdHF2Y3h4ZmdvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyNjM0MTksImV4cCI6MjA3OTgzOTQxOX0.-gccKjikjaFXVCQ9W-uj77OlhbKPJplb81rrTBTID4';
-        const PPN_RATE = 0.11;
-        
-        let supabase;
-        let state = {
-            // User dan autentikasi sederhana (role based)
-            user: JSON.parse(localStorage.getItem('user')) || null, 
-            invoices: [],
-            clients: [],
-            selectedInvoice: null,
-            currentView: 'login', // 'login', 'dashboard', 'detail'
-            filters: { client: 'all', project: 'all', activity: 'all' },
-            loading: false,
-            // State untuk Modal
-            confirmationAction: null,
+    try {
+      window.supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { realtime: { params: { eventsPerSecond: 10 } } });
+      console.log('Supabase client initialized');
+    } catch (e) {
+      console.error('Supabase init failed', e);
+      window.supabaseClient = null;
+    }
+  </script>
+
+  <!-- Babel to compile JSX in browser for demo purposes -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Main app -->
+  <script type="text/babel" data-presets="env,react">
+    const { useState, useEffect, useMemo, useCallback } = React;
+
+    // Helpers
+    const formatRupiah = (n) => {
+      return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits:0 }).format(Number(n || 0));
+    };
+    const todayISO = () => new Date().toISOString().slice(0,10);
+    const daysUntil = (dateStr) => {
+      if (!dateStr) return Infinity;
+      const due = new Date(dateStr); due.setHours(0,0,0,0);
+      const now = new Date(); now.setHours(0,0,0,0);
+      return Math.ceil((due - now) / (1000*60*60*24));
+    };
+    const uid = () => Math.random().toString(36).slice(2,9) + Date.now();
+
+    // Mock data (used when Supabase unavailable)
+    const MOCK_DATA = (() => {
+      const past = d => new Date(Date.now() - d*24*60*60*1000).toISOString().slice(0,10);
+      return [
+        {
+          id: 'd1',
+          proyek: 'Renovasi Kantor Pusat',
+          klien: 'PT. Mega Karya',
+          tipe: 'Invoice Final',
+          nominal: 150000000,
+          tanggal: past(40),
+          dueDate: past(10),
+          amountPaid: 0,
+          keterangan: 'Pelunasan Tahap 2 (Final)',
+          statusPembayaran: 'Jatuh Tempo',
+          history: [
+            { id: uid(), date: past(40), note: 'Invoice dibuat', action: 'CREATE' },
+            { id: uid(), date: past(38), note: 'Dikirim via email', action: 'SEND' },
+          ],
+        },
+        {
+          id: 'd2',
+          proyek: 'Sistem IT Baru',
+          klien: 'PT. Solusi Digital',
+          tipe: 'Klaim Progres',
+          nominal: 50000000,
+          tanggal: past(60),
+          dueDate: null,
+          amountPaid: 50000000,
+          keterangan: 'Klaim 30% pembayaran awal',
+          statusPembayaran: 'Lunas',
+          history: [
+            { id: uid(), date: past(60), note: 'Klaim dibuat', action: 'CREATE' },
+            { id: uid(), date: past(50), note: 'Pembayaran diterima', action: 'PAYMENT_RECEIVED' },
+          ],
+        },
+        {
+          id: 'd3',
+          proyek: 'Pembangunan Gudang C',
+          klien: 'CV. Bangun Abadi',
+          tipe: 'Invoice Final',
+          nominal: 85000000,
+          tanggal: past(20),
+          dueDate: (() => { const dt = new Date(); dt.setDate(dt.getDate()+5); return dt.toISOString().slice(0,10); })(),
+          amountPaid: 40000000,
+          keterangan: 'Pelunasan Tagihan Material Dasar',
+          statusPembayaran: 'Outstanding',
+          history: [
+            { id: uid(), date: past(20), note: 'Invoice awal', action: 'CREATE' },
+            { id: uid(), date: past(10), note: 'Pembayaran parsial Rp40jt', action: 'PARTIAL_PAYMENT' },
+          ],
+        },
+      ];
+    })();
+
+    // Small Icon component (emoji)
+    const Icon = ({ children }) => <span style={{fontSize:16}}>{children}</span>;
+
+    function App() {
+      const sb = window.supabaseClient || null;
+      const table = 'transaksi';
+
+      const [transactions, setTransactions] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [useMock, setUseMock] = useState(false);
+      const [error, setError] = useState(null);
+
+      // UI state
+      const [clientFilter, setClientFilter] = useState('');
+      const [projectFilter, setProjectFilter] = useState('');
+      const [activityFilter, setActivityFilter] = useState('');
+      const [search, setSearch] = useState('');
+      const [activeView, setActiveView] = useState('dashboard'); // dashboard | detail
+      const [detailItem, setDetailItem] = useState(null);
+
+      // Form modal state
+      const [formOpen, setFormOpen] = useState(false);
+      const [formData, setFormData] = useState(null);
+      // history modal
+      const [historyFormOpen, setHistoryFormOpen] = useState(false);
+      const [historyDraft, setHistoryDraft] = useState({ action: 'NOTE', note: '' });
+      // confirmation modal
+      const [confirm, setConfirm] = useState(null);
+
+      // Fetch transactions from Supabase or fallback
+      const fetchTransactions = useCallback(async () => {
+        if (!sb) {
+          setTransactions(MOCK_DATA);
+          setUseMock(true);
+          return;
+        }
+        setLoading(true);
+        setError(null);
+        try {
+          const { data, error: err } = await sb.from(table).select('*').order('tanggal', { ascending: false });
+          if (err) throw err;
+          const normalized = (data||[]).map(r => ({
+            id: r.id,
+            proyek: r.proyek,
+            klien: r.klien,
+            tipe: r.tipe,
+            nominal: Number(r.nominal || 0),
+            tanggal: r.tanggal ? (new Date(r.tanggal)).toISOString().slice(0,10) : '',
+            dueDate: r.duedate ? (new Date(r.duedate)).toISOString().slice(0,10) : null,
+            amountPaid: Number(r.amountpaid || 0),
+            keterangan: r.keterangan,
+            statusPembayaran: r.statuspembayaran || ((Number(r.nominal||0) - Number(r.amountpaid||0)) <=0 ? 'Lunas' : 'Outstanding'),
+            history: Array.isArray(r.history) ? r.history : (r.history ? JSON.parse(r.history) : []),
+          }));
+          setTransactions(normalized);
+          setUseMock(false);
+        } catch (e) {
+          console.error(e);
+          setError('Gagal memuat data dari Supabase. Menggunakan data mock.');
+          setTransactions(MOCK_DATA);
+          setUseMock(true);
+        } finally {
+          setLoading(false);
+        }
+      }, [sb]);
+
+      // Realtime subscription
+      useEffect(() => {
+        let channel = null;
+        fetchTransactions();
+        if (!sb) return;
+        try {
+          channel = sb.channel('public:'+table)
+            .on('postgres_changes', { event: '*', schema: 'public', table }, payload => {
+              // simply re-fetch for simplicity
+              fetchTransactions();
+            })
+            .subscribe();
+        } catch (e) {
+          console.warn('Realtime not available', e);
+        }
+        return () => {
+          if (channel && sb) {
+            try { sb.removeChannel(channel); } catch(e) {}
+          }
         };
+      }, [sb, fetchTransactions]);
 
-        // --- 2. MOCK DATA UNTUK SEEDING DATABASE ---
-        // Catatan: Karena kita tidak punya tabel relasi, saya duplikasi data klien ke invoice
-        const mockData = {
-            clients: [
-                { client_name: 'PT Maju Bersama', project_name: 'Sistem ERP', project_activity: 'Pengembangan Perangkat Lunak' },
-                { client_name: 'CV Sumber Rejeki', project_name: 'Pemasaran Digital Q4', project_activity: 'Jasa Konsultasi Pemasaran' },
-                { client_name: 'UD Tani Makmur', project_name: 'Laporan Keuangan Q1', project_activity: 'Jasa Akuntansi' },
-                { client_name: 'PT Tekno Solusi', project_name: 'Upgrade Server', project_activity: 'Jasa Instalasi Hardware' },
-            ],
-            invoices: [
-                { invoice_number: 'INV-2024-001', client_name: 'PT Maju Bersama', project_name: 'Sistem ERP', project_activity: 'Pengembangan Perangkat Lunak', date_created: '2024-02-01', date_due: '2024-02-15', date_paid: '2024-02-10', amount_base: 10000000, status: 'PAID', amount_paid: 11100000, history: [{ date: '2024-02-10', text: 'Pembayaran penuh diterima melalui transfer bank.' }] },
-                { invoice_number: 'INV-2024-002', client_name: 'CV Sumber Rejeki', project_name: 'Pemasaran Digital Q4', project_activity: 'Jasa Konsultasi Pemasaran', date_created: '2024-03-01', date_due: '2024-03-14', date_paid: null, amount_base: 5500000, status: 'OVERDUE', amount_paid: 0, history: [{ date: '2024-03-01', text: 'Invoice dikirim fisik via kurir.' }, { date: '2024-03-15', text: 'Telpon ke kantor: PIC sedang cuti sakit seminggu.' }] },
-                { invoice_number: 'CLAIM-2024-001', client_name: 'UD Tani Makmur', project_name: 'Laporan Keuangan Q1', project_activity: 'Jasa Akuntansi', date_created: '2024-03-10', date_due: '2024-03-24', date_paid: null, amount_base: 2500000, status: 'DRAFT', amount_paid: 0, history: [{ date: '2024-03-10', text: 'Draft klaim dibuat dan dikirim untuk persetujuan internal.' }] },
-                { invoice_number: 'INV-2024-003', client_name: 'PT Tekno Solusi', project_name: 'Upgrade Server', project_activity: 'Jasa Instalasi Hardware', date_created: '2024-11-20', date_due: '2024-12-04', date_paid: null, amount_base: 12000000, status: 'PENDING', amount_paid: 0, history: [] }
-            ],
-        };
+      // Derived filters (from transactions)
+      const clients = useMemo(() => Array.from(new Set(transactions.map(t => t.klien))).sort(), [transactions]);
+      const projects = useMemo(() => {
+        const list = transactions.filter(t => !clientFilter || t.klien === clientFilter).map(t => t.proyek);
+        return Array.from(new Set(list)).sort();
+      }, [transactions, clientFilter]);
+      const activities = useMemo(() => {
+        const list = transactions
+          .filter(t => (!clientFilter || t.klien === clientFilter) && (!projectFilter || t.proyek === projectFilter))
+          .map(t => t.keterangan);
+        return Array.from(new Set(list)).sort();
+      }, [transactions, clientFilter, projectFilter]);
 
-        // --- 3. UTILITY FUNCTIONS ---
+      // Filtered sets for two tables
+      const invoiceFinal = useMemo(() => transactions.filter(t =>
+        t.tipe === 'Invoice Final' &&
+        (!clientFilter || t.klien === clientFilter) &&
+        (!projectFilter || t.proyek === projectFilter) &&
+        (!activityFilter || t.keterangan === activityFilter) &&
+        (search === '' || [t.proyek,t.klien,t.keterangan].join(' ').toLowerCase().includes(search.toLowerCase()))
+      ), [transactions, clientFilter, projectFilter, activityFilter, search]);
 
-        const calculateTotal = (base) => base + (base * PPN_RATE);
-        const formatIDR = (amount) => {
-            if (isNaN(amount) || amount === null) return 'Rp 0';
-            return new Intl.NumberFormat('id-ID', {
-                style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0,
-            }).format(amount);
+      const klaimProgres = useMemo(() => transactions.filter(t =>
+        t.tipe === 'Klaim Progres' &&
+        (!clientFilter || t.klien === clientFilter) &&
+        (!projectFilter || t.proyek === projectFilter) &&
+        (!activityFilter || t.keterangan === activityFilter) &&
+        (search === '' || [t.proyek,t.klien,t.keterangan].join(' ').toLowerCase().includes(search.toLowerCase()))
+      ), [transactions, clientFilter, projectFilter, activityFilter, search]);
+
+      // Dashboard summary
+      const summary = useMemo(() => {
+        const totalOutstanding = transactions.reduce((s,t) => s + Math.max(0, t.nominal - (t.amountPaid||0)), 0);
+        const totalKlaim = transactions.filter(t => t.tipe==='Klaim Progres').reduce((s,t)=>s+t.nominal,0);
+        const totalInvoice = transactions.filter(t => t.tipe==='Invoice Final').reduce((s,t)=>s+t.nominal,0);
+        return { totalOutstanding, totalKlaim, totalInvoice };
+      }, [transactions]);
+
+      // Open detail modal (or navigate)
+      const openDetail = (item) => {
+        setDetailItem(item);
+        setActiveView('detail');
+      };
+
+      // Toggle form for create/edit transaction (simple)
+      const openForm = (item=null) => {
+        setFormData(item ? { ...item } : {
+          id: null, proyek:'', klien:'', tipe:'Invoice Final', nominal:0, tanggal: todayISO(), dueDate:'', amountPaid:0, keterangan:'', statusPembayaran:'Outstanding', history: []
+        });
+        setFormOpen(true);
+      };
+
+      // Save transaksi (insert or update)
+      const saveTransaksi = async (payload) => {
+        if (!sb) {
+          // local mock save
+          if (payload.id) {
+            setTransactions(prev => prev.map(p => p.id === payload.id ? payload : p));
+          } else {
+            payload.id = 'm_'+uid();
+            setTransactions(prev => [payload, ...prev]);
+          }
+          setFormOpen(false);
+          return;
+        }
+        setLoading(true);
+        try {
+          const record = {
+            proyek: payload.proyek, klien: payload.klien, tipe: payload.tipe,
+            nominal: payload.nominal, tanggal: payload.tanggal || null,
+            duedate: payload.dueDate || null, amountpaid: payload.amountPaid || 0,
+            keterangan: payload.keterangan, statuspembayaran: payload.statusPembayaran,
+            history: payload.history || []
+          };
+          if (payload.id) {
+            const { error } = await sb.from(table).update(record).eq('id', payload.id);
+            if (error) throw error;
+          } else {
+            const { error } = await sb.from(table).insert(record);
+            if (error) throw error;
+          }
+          await fetchTransactions();
+          setFormOpen(false);
+        } catch (e) {
+          console.error(e);
+          setError('Gagal menyimpan transaksi: '+(e.message||e));
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      // Change status with confirmation
+      const requestStatusChange = (item, newStatus, forceTypeConvert=false) => {
+        const message = forceTypeConvert
+          ? `Ubah tipe dokumen menjadi 'Invoice Final' dan set status menjadi '${newStatus}' untuk ${item.proyek}? Anda akan diminta konfirmasi.`
+          : `Ubah status menjadi '${newStatus}' untuk ${item.proyek}?`;
+        setConfirm({
+          title: 'Konfirmasi Perubahan Status',
+          message,
+          onConfirm: async () => {
+            setConfirm(null);
+            await performStatusChange(item, newStatus, forceTypeConvert);
+          },
+          onCancel: () => setConfirm(null)
+        });
+      };
+
+      const performStatusChange = async (item, newStatus, convertType=false) => {
+        if (!sb) {
+          const updated = { ...item, statusPembayaran: newStatus };
+          if (convertType) updated.tipe = 'Invoice Final';
+          setTransactions(prev => prev.map(p => p.id === item.id ? updated : p));
+          if (detailItem && detailItem.id === item.id) setDetailItem(updated);
+          return;
+        }
+        setLoading(true);
+        try {
+          const updates = { statuspembayaran: newStatus };
+          if (convertType) updates.tipe = 'Invoice Final';
+          const { error } = await sb.from(table).update(updates).eq('id', item.id);
+          if (error) throw error;
+          await fetchTransactions();
+        } catch (e) {
+          console.error(e);
+          setError('Gagal memperbarui status: '+(e.message||e));
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      // Add/edit history note
+      const openHistoryModal = (baseItem, edit=null) => {
+        setDetailItem(baseItem);
+        setHistoryDraft(edit ? { action: edit.action, note: edit.note, id: edit.id } : { action: 'NOTE', note: '' });
+        setHistoryFormOpen(true);
+      };
+
+      const saveHistory = async () => {
+        if (!detailItem) return;
+        if (!historyDraft.note.trim()) { setError('Catatan tidak boleh kosong'); return; }
+        const newHistory = {
+          id: historyDraft.id || uid(),
+          date: new Date().toISOString(),
+          note: historyDraft.note.trim(),
+          action: historyDraft.action
         };
-        const formatDate = (dateString) => {
-            if (!dateString) return '-';
-            const options = { day: 'numeric', month: 'short', year: 'numeric' };
-            try {
-                const date = new Date(dateString + 'T00:00:00'); 
-                return date.toLocaleDateString('id-ID', options);
-            } catch (error) { return dateString; }
-        };
-        const getAging = (created, paid) => {
-            const start = new Date(created);
-            const end = paid ? new Date(paid) : new Date();
-            if (isNaN(start)) return 0;
-            start.setHours(0, 0, 0, 0); end.setHours(0, 0, 0, 0);
-            const diffTime = Math.abs(end.getTime() - start.getTime());
-            return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-        };
-        const getStatusBadge = (status) => {
-            const statusMap = {
-                'PAID': { text: 'LUNAS', color: 'bg-green-100 text-green-700 border-green-200' },
-                'PENDING': { text: 'PENDING', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-                'OVERDUE': { text: 'JATUH TEMPO', color: 'bg-red-100 text-red-700 border-red-200' },
-                'DRAFT': { text: 'PROGRESS KLAIM', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+        const updatedHistory = historyDraft.id
+          ? (detailItem.history || []).map(h => h.id === historyDraft.id ? newHistory : h)
+          : [...(detailItem.history || []), newHistory];
+
+        if (!sb) {
+          const updated = { ...detailItem, history: updatedHistory };
+          setTransactions(prev => prev.map(p => p.id === detailItem.id ? updated : p));
+          setDetailItem(updated);
+          setHistoryFormOpen(false);
+          return;
+        }
+        setLoading(true);
+        try {
+          const { error } = await sb.from(table).update({ history: updatedHistory }).eq('id', detailItem.id);
+          if (error) throw error;
+          await fetchTransactions();
+          // refresh detail from transactions
+          const refreshed = (await sb.from(table).select('*').eq('id', detailItem.id)).data?.[0];
+          if (refreshed) {
+            const norm = {
+              id: refreshed.id,
+              proyek: refreshed.proyek,
+              klien: refreshed.klien,
+              tipe: refreshed.tipe,
+              nominal: Number(refreshed.nominal||0),
+              tanggal: refreshed.tanggal ? (new Date(refreshed.tanggal)).toISOString().slice(0,10) : '',
+              dueDate: refreshed.duedate ? (new Date(refreshed.duedate)).toISOString().slice(0,10) : null,
+              amountPaid: Number(refreshed.amountpaid||0),
+              keterangan: refreshed.keterangan,
+              statusPembayaran: refreshed.statuspembayaran,
+              history: Array.isArray(refreshed.history)?refreshed.history:[],
             };
-            const s = statusMap[status] || statusMap['DRAFT'];
-            return `<span class="px-2.5 py-0.5 rounded-full text-xs font-medium border ${s.color}">${s.text}</span>`;
-        };
-        const showLoading = (show) => {
-            const container = document.getElementById('app-container');
-            if (show) {
-                container.innerHTML = `
-                    <div class="min-h-screen flex items-center justify-center">
-                        <svg class="animate-spin -ml-1 mr-3 h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span class="text-lg font-medium text-blue-600">Memuat data...</span>
+            setDetailItem(norm);
+          }
+          setHistoryFormOpen(false);
+        } catch(e) {
+          console.error(e);
+          setError('Gagal menyimpan histori: '+(e.message||e));
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      // Delete transaction
+      const deleteTx = async (id) => {
+        if (!sb) {
+          setTransactions(prev => prev.filter(p => p.id !== id));
+          if (detailItem?.id === id) { setActiveView('dashboard'); setDetailItem(null); }
+          return;
+        }
+        setLoading(true);
+        try {
+          const { error } = await sb.from(table).delete().eq('id', id);
+          if (error) throw error;
+          await fetchTransactions();
+          if (detailItem?.id === id) { setActiveView('dashboard'); setDetailItem(null); }
+        } catch(e) {
+          console.error(e); setError('Gagal menghapus: '+(e.message||e));
+        } finally { setLoading(false); }
+      };
+
+      // Derived grouped outstanding per project for left card
+      const outstandingPerProject = useMemo(() => {
+        const map = {};
+        transactions.forEach(t => {
+          const remaining = Math.max(0, t.nominal - (t.amountPaid||0));
+          if (remaining <= 0) return;
+          const key = `${t.proyek}||${t.keterangan}`;
+          if (!map[key]) map[key] = { proyek: t.proyek, keterangan: t.keterangan, totalOutstanding: 0 };
+          map[key].totalOutstanding += remaining;
+        });
+        return Object.values(map).sort((a,b)=> b.totalOutstanding - a.totalOutstanding);
+      }, [transactions]);
+
+      // UI components
+      return (
+        <div>
+          <header className="mb-6">
+            <h1 className="text-2xl font-bold text-slate-900 flex items-center">
+              <span className="mr-2 text-2xl">🧾</span>
+              Monitor Tagihan Piutang - Supabase
+            </h1>
+            <p className="text-sm text-slate-600 mt-1">Project: epitfrqwwsdtqvcxxfgo.supabase.co {useMock && <span className="ml-3 text-amber-600">[Mock Mode]</span>}</p>
+          </header>
+
+          <main>
+            {/* Dashboard Header: summary cards */}
+            <section className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-white p-4 rounded-lg shadow">
+                <div className="text-sm text-slate-500">Total Outstanding</div>
+                <div className="text-xl font-bold mt-2">{formatRupiah(summary.totalOutstanding)}</div>
+                <div className="text-xs text-slate-400 mt-1">Sisa belum dibayar</div>
+              </div>
+              <div className="bg-white p-4 rounded-lg shadow">
+                <div className="text-sm text-slate-500">Total Klaim Progres (Bruto)</div>
+                <div className="text-xl font-bold mt-2">{formatRupiah(summary.totalKlaim)}</div>
+              </div>
+              <div className="bg-white p-4 rounded-lg shadow">
+                <div className="text-sm text-slate-500">Total Invoice Final (Bruto)</div>
+                <div className="text-xl font-bold mt-2">{formatRupiah(summary.totalInvoice)}</div>
+              </div>
+              <div className="bg-white p-4 rounded-lg shadow flex flex-col justify-between">
+                <div>
+                  <div className="text-sm text-slate-500">Kontrol</div>
+                  <div className="mt-2 flex gap-2">
+                    <button onClick={()=>openForm(null)} className="bg-blue-600 text-white px-3 py-1 rounded">+ Tambah</button>
+                    <button onClick={()=>{ setClientFilter(''); setProjectFilter(''); setActivityFilter(''); setSearch(''); }} className="bg-slate-100 px-3 py-1 rounded">Reset Filter</button>
+                  </div>
+                </div>
+                <div className="text-xs text-slate-400 mt-2">Data: {transactions.length} item</div>
+              </div>
+            </section>
+
+            {/* Filters */}
+            <section className="mb-6 bg-white p-4 rounded-lg shadow">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-xs text-slate-600">Klien</label>
+                  <select className="w-full p-2 border rounded" value={clientFilter} onChange={e=>setClientFilter(e.target.value)}>
+                    <option value=''>Semua Klien</option>
+                    {clients.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-600">Nama Proyek</label>
+                  <select className="w-full p-2 border rounded" value={projectFilter} onChange={e=>setProjectFilter(e.target.value)}>
+                    <option value=''>Semua Proyek</option>
+                    {projects.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-600">Kegiatan / Keterangan</label>
+                  <select className="w-full p-2 border rounded" value={activityFilter} onChange={e=>setActivityFilter(e.target.value)}>
+                    <option value=''>Semua Kegiatan</option>
+                    {activities.map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-600">Pencarian</label>
+                  <input className="w-full p-2 border rounded" placeholder="Cari..." value={search} onChange={e=>setSearch(e.target.value)} />
+                </div>
+              </div>
+            </section>
+
+            {/* Two Tables: Invoice Final & Klaim Progres */}
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              <div className="bg-white p-4 rounded-lg shadow">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="font-semibold">Outstanding - Invoice Final</h3>
+                  <div className="text-sm text-slate-500">{invoiceFinal.length} items</div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs">Proyek</th>
+                        <th className="px-3 py-2 text-left text-xs">Klien</th>
+                        <th className="px-3 py-2 text-left text-xs">Nominal</th>
+                        <th className="px-3 py-2 text-left text-xs">Sisa</th>
+                        <th className="px-3 py-2 text-left text-xs">Jatuh Tempo</th>
+                        <th className="px-3 py-2 text-center text-xs">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoiceFinal.map(tx => {
+                        const sisa = Math.max(0, tx.nominal - (tx.amountPaid||0));
+                        return (
+                          <tr key={tx.id} className="hover:bg-slate-50">
+                            <td className="px-3 py-2 text-sm">{tx.proyek}</td>
+                            <td className="px-3 py-2 text-sm">{tx.klien}</td>
+                            <td className="px-3 py-2 text-sm">{formatRupiah(tx.nominal)}</td>
+                            <td className="px-3 py-2 text-sm">{formatRupiah(sisa)}</td>
+                            <td className="px-3 py-2 text-sm">{tx.dueDate ? (<div>{tx.dueDate} <div className="text-xs text-slate-400">({daysUntil(tx.dueDate)} hari)</div></div>) : '-'}</td>
+                            <td className="px-3 py-2 text-center">
+                              <div className="flex justify-center gap-2">
+                                <button title="Detail" onClick={()=>openDetail(tx)} className="px-2 py-1 bg-indigo-600 text-white rounded text-xs">Detail</button>
+                                <button title="Set Lunas" onClick={()=>requestStatusChange(tx, 'Lunas')} className="px-2 py-1 bg-emerald-600 text-white rounded text-xs">Set Lunas</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {invoiceFinal.length===0 && (
+                        <tr><td colSpan={6} className="text-center py-6 text-slate-500">Tidak ada data</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-lg shadow">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="font-semibold">Klaim Progres</h3>
+                  <div className="text-sm text-slate-500">{klaimProgres.length} items</div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs">Proyek</th>
+                        <th className="px-3 py-2 text-left text-xs">Klien</th>
+                        <th className="px-3 py-2 text-left text-xs">Nominal</th>
+                        <th className="px-3 py-2 text-left text-xs">Sisa</th>
+                        <th className="px-3 py-2 text-left text-xs">Tanggal</th>
+                        <th className="px-3 py-2 text-center text-xs">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {klaimProgres.map(tx => {
+                        const sisa = Math.max(0, tx.nominal - (tx.amountPaid||0));
+                        return (
+                          <tr key={tx.id} className="hover:bg-slate-50">
+                            <td className="px-3 py-2 text-sm">{tx.proyek}</td>
+                            <td className="px-3 py-2 text-sm">{tx.klien}</td>
+                            <td className="px-3 py-2 text-sm">{formatRupiah(tx.nominal)}</td>
+                            <td className="px-3 py-2 text-sm">{formatRupiah(sisa)}</td>
+                            <td className="px-3 py-2 text-sm">{tx.tanggal}</td>
+                            <td className="px-3 py-2 text-center">
+                              <div className="flex justify-center gap-2">
+                                <button onClick={()=>openDetail(tx)} className="px-2 py-1 bg-indigo-600 text-white rounded text-xs">Detail</button>
+                                <button onClick={()=>requestStatusChange(tx, 'Outstanding')} className="px-2 py-1 bg-amber-500 text-white rounded text-xs">Keep Outstanding</button>
+                                <button onClick={()=>requestStatusChange(tx, 'Lunas', true)} className="px-2 py-1 bg-emerald-600 text-white rounded text-xs" title="Convert to Invoice Final & Set Lunas">Convert→Final</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {klaimProgres.length===0 && (<tr><td colSpan={6} className="text-center py-6 text-slate-500">Tidak ada data</td></tr>)}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+
+            {/* Left: outstanding per project summary */}
+            <section className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="bg-white p-4 rounded-lg shadow lg:col-span-1">
+                <h4 className="font-semibold mb-2">Outstanding per Proyek & Aktivitas</h4>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {outstandingPerProject.length ? outstandingPerProject.map((it,i)=>(
+                    <div key={i} className="flex justify-between items-start p-2 border rounded">
+                      <div>
+                        <div className="font-medium text-sm">{it.proyek}</div>
+                        <div className="text-xs text-slate-500 italic">{it.keterangan}</div>
+                      </div>
+                      <div className="font-bold text-sm">{formatRupiah(it.totalOutstanding)}</div>
                     </div>
-                `;
-            }
-        };
+                  )) : <div className="text-sm text-slate-500">Tidak ada outstanding</div>}
+                </div>
+              </div>
 
-        // --- 4. SUPABASE CRUD & SEEDING ---
-
-        // Fungsi untuk seeding data ke Supabase
-        async function seedDatabase() {
-            try {
-                // 1. Cek dan Seed Clients
-                let { data: clients, error: clientError } = await supabase.from('clients').select('id');
-                if (clientError) throw clientError;
-
-                if (clients.length === 0) {
-                    console.log('Seeding clients...');
-                    const { error } = await supabase.from('clients').insert(mockData.clients);
-                    if (error) throw error;
-                    // Ambil kembali clients yang sudah di-insert untuk FK mapping
-                    ({ data: clients } = await supabase.from('clients').select('*')); 
-                }
-                state.clients = clients; // Update state clients
-                
-                // 2. Cek dan Seed Invoices
-                let { data: invoices, error: invoiceError } = await supabase.from('invoices').select('id');
-                if (invoiceError) throw invoiceError;
-
-                if (invoices.length === 0) {
-                    console.log('Seeding invoices...');
-                    const invoicesToInsert = mockData.invoices.map(inv => {
-                        const client = clients.find(c => c.client_name === inv.client_name);
-                        return { 
-                            ...inv, 
-                            client_id: client ? client.id : null, // Tambahkan client_id
-                            history: JSON.stringify(inv.history) // Supabase butuh JSON string
-                        };
+              <div className="bg-white p-4 rounded-lg shadow lg:col-span-2">
+                <h4 className="font-semibold mb-2">Ringkasan Klien (Top 5 Outstanding)</h4>
+                <div className="space-y-3">
+                  {(() => {
+                    const map = {};
+                    transactions.forEach(t => {
+                      const rem = Math.max(0, t.nominal - (t.amountPaid||0));
+                      if (rem <= 0) return;
+                      map[t.klien] = (map[t.klien]||0) + rem;
                     });
-                    const { error } = await supabase.from('invoices').insert(invoicesToInsert);
-                    if (error) throw error;
-                }
-                
-                console.log('Database seeding complete or skipped.');
-
-            } catch (error) {
-                console.error('Error during database seeding:', error.message);
-            }
-        }
-
-        // Fungsi untuk mengambil semua data
-        async function fetchData() {
-            showLoading(true);
-            try {
-                // Ambil semua invoice
-                let { data: invoices, error: invError } = await supabase
-                    .from('invoices')
-                    .select('*')
-                    .order('date_created', { ascending: false });
-
-                if (invError) throw invError;
-
-                // Ambil semua klien
-                let { data: clients, error: clientError } = await supabase
-                    .from('clients')
-                    .select('client_name, project_name, project_activity')
-                    .order('client_name', { ascending: true });
-
-                if (clientError) throw clientError;
-
-                // Parse history JSON string menjadi array objek
-                state.invoices = invoices.map(inv => ({
-                    ...inv,
-                    history: inv.history ? JSON.parse(inv.history) : [],
-                    total_amount: calculateTotal(inv.amount_base),
-                    sisa_bayar: calculateTotal(inv.amount_base) - inv.amount_paid
-                }));
-                state.clients = clients;
-                
-                updateUI();
-            } catch (error) {
-                console.error('Error fetching data:', error.message);
-                document.getElementById('app-container').innerHTML = `<div class="p-10 text-center text-red-600">Gagal mengambil data: ${error.message}</div>`;
-            } finally {
-                showLoading(false);
-            }
-        }
-        
-        // Fungsi untuk update status invoice (dengan konfirmasi)
-        async function updateInvoiceStatus(id, newStatus) {
-            const invoice = state.invoices.find(inv => inv.id === id);
-            if (!invoice) return console.error('Invoice tidak ditemukan');
-
-            let updatePayload = { status: newStatus };
-            if (newStatus === 'PAID') {
-                updatePayload.date_paid = new Date().toISOString().split('T')[0];
-                updatePayload.amount_paid = invoice.total_amount;
-            } else if (newStatus === 'DRAFT') {
-                updatePayload.date_paid = null;
-                updatePayload.amount_paid = 0;
-            }
-
-            try {
-                const { error } = await supabase
-                    .from('invoices')
-                    .update(updatePayload)
-                    .eq('id', id);
-
-                if (error) throw error;
-                await fetchData(); // Refresh data setelah update
-                if (state.currentView === 'detail') navigateTo('detail', id); // Tetap di detail jika sedang di detail
-            } catch (error) {
-                console.error('Gagal update status:', error.message);
-            }
-        }
-
-        // Fungsi untuk menambah histori
-        async function addHistoryNote(id, note) {
-            const invoice = state.invoices.find(inv => inv.id === id);
-            if (!invoice) return console.error('Invoice tidak ditemukan');
-
-            const newHistory = [...invoice.history, note];
-            try {
-                const { error } = await supabase
-                    .from('invoices')
-                    .update({ history: JSON.stringify(newHistory) })
-                    .eq('id', id);
-
-                if (error) throw error;
-                await fetchData(); // Refresh data
-                navigateTo('detail', id); // Kembali ke detail
-            } catch (error) {
-                console.error('Gagal menambah histori:', error.message);
-            }
-        }
-
-        // Fungsi untuk mengupdate jumlah pembayaran
-        async function updatePayment(id, amountPaid) {
-            try {
-                const { error } = await supabase
-                    .from('invoices')
-                    .update({ amount_paid: amountPaid })
-                    .eq('id', id);
-
-                if (error) throw error;
-                await fetchData();
-                navigateTo('detail', id);
-            } catch (error) {
-                console.error('Gagal update pembayaran:', error.message);
-            }
-        }
-
-
-        // --- 5. UI & VIEW MANAGEMENT (ROUTING) ---
-
-        // Fungsi utama untuk mengganti tampilan
-        function navigateTo(view, invoiceId = null) {
-            state.currentView = view;
-            if (view === 'detail' && invoiceId) {
-                state.selectedInvoice = state.invoices.find(inv => inv.id === invoiceId);
-            } else {
-                state.selectedInvoice = null;
-            }
-            updateUI();
-        }
-
-        // Render Dropdown Filter
-        function renderFilters() {
-            const getUniqueValues = (key) => [...new Set(state.clients.map(c => c[key]).filter(Boolean))].sort();
-            
-            const clientOptions = getUniqueValues('client_name').map(val => `<option value="${val}">${val}</option>`).join('');
-            const projectOptions = getUniqueValues('project_name').map(val => `<option value="${val}">${val}</option>`).join('');
-            const activityOptions = getUniqueValues('project_activity').map(val => `<option value="${val}">${val}</option>`).join('');
-
-            return `
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                    ${renderFilterDropdown('client', 'Klien', clientOptions)}
-                    ${renderFilterDropdown('project', 'Nama Proyek', projectOptions)}
-                    ${renderFilterDropdown('activity', 'Kegiatan Proyek', activityOptions)}
+                    const arr = Object.entries(map).map(([klien,total])=>({klien,total})).sort((a,b)=>b.total-a.total).slice(0,5);
+                    return arr.length ? arr.map((c,i)=>(
+                      <div key={i}>
+                        <div className="flex justify-between text-sm font-medium">
+                          <div>{c.klien}</div>
+                          <div className="text-red-600">{formatRupiah(c.total)}</div>
+                        </div>
+                        <div className="w-full bg-slate-200 rounded-full h-2.5 mt-1">
+                          <div className="bg-red-500 h-2.5 rounded-full" style={{ width: `${(c.total / (arr[0]?.total || 1))*100}%` }}></div>
+                        </div>
+                      </div>
+                    )) : <div className="text-sm text-slate-500">Tidak ada outstanding</div>;
+                  })()}
                 </div>
-            `;
-        }
+              </div>
+            </section>
 
-        function renderFilterDropdown(key, label, options) {
-            return `
-                <div>
-                    <label class="block text-xs font-medium text-gray-500 uppercase mb-1">${label}</label>
-                    <select id="filter-${key}" data-filter-key="${key}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-blue-500 focus:border-blue-500 bg-white" onchange="handleFilterChange(this)">
-                        <option value="all">Semua ${label}</option>
-                        ${options}
+            {/* Detail View */}
+            {activeView === 'detail' && detailItem && (
+              <section className="fixed inset-0 z-50 flex items-start justify-center p-6 modal-backdrop">
+                <div className="bg-white rounded-lg shadow-2xl max-w-3xl w-full p-6 overflow-auto" style={{maxHeight:'90vh'}}>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h2 className="text-xl font-bold">{detailItem.proyek}</h2>
+                      <div className="text-sm text-slate-500">{detailItem.klien} • {detailItem.tipe}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={()=>{ setActiveView('dashboard'); setDetailItem(null); }} className="px-3 py-1 rounded bg-slate-100">Tutup</button>
+                      <button onClick={()=>openForm(detailItem)} className="px-3 py-1 rounded bg-blue-600 text-white">Edit</button>
+                      <button onClick={()=>setConfirm({ title:'Hapus Transaksi', message:'Yakin hapus transaksi ini?', onConfirm:()=>deleteTx(detailItem.id), onCancel:()=>setConfirm(null) })} className="px-3 py-1 rounded bg-red-600 text-white">Hapus</button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div className="space-y-2">
+                      <div><span className="text-xs text-slate-500">Nominal</span><div className="font-bold">{formatRupiah(detailItem.nominal)}</div></div>
+                      <div><span className="text-xs text-slate-500">Sudah Dibayar</span><div>{formatRupiah(detailItem.amountPaid)}</div></div>
+                      <div><span className="text-xs text-slate-500">Sisa</span><div className="font-bold">{formatRupiah(Math.max(0, detailItem.nominal - (detailItem.amountPaid||0)))}</div></div>
+                      <div><span className="text-xs text-slate-500">Tanggal Dokumen</span><div>{detailItem.tanggal}</div></div>
+                      <div><span className="text-xs text-slate-500">Jatuh Tempo</span><div>{detailItem.dueDate || '-'}</div></div>
+                      <div><span className="text-xs text-slate-500">Status</span>
+                        <div className="mt-1 flex gap-2">
+                          <div className={`px-2 py-1 rounded text-sm ${detailItem.statusPembayaran==='Lunas'?'bg-emerald-100 text-emerald-700': detailItem.statusPembayaran==='Jatuh Tempo'?'bg-red-100 text-red-700':'bg-amber-100 text-amber-700'}`}>{detailItem.statusPembayaran}</div>
+                          <button onClick={()=>requestStatusChange(detailItem, 'Lunas')} className="px-2 py-1 bg-emerald-600 text-white rounded text-xs">Set Lunas</button>
+                          <button onClick={()=>requestStatusChange(detailItem, 'Outstanding')} className="px-2 py-1 bg-amber-600 text-white rounded text-xs">Set Outstanding</button>
+                          {detailItem.tipe !== 'Invoice Final' && <button onClick={()=>requestStatusChange(detailItem, detailItem.statusPembayaran, true)} className="px-2 py-1 bg-indigo-600 text-white rounded text-xs">Convert ke Invoice Final</button>}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-2"><span className="text-xs text-slate-500">Keterangan</span><div className="text-sm">{detailItem.keterangan}</div></div>
+                      <div className="mb-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-semibold">Riwayat Penagihan</span>
+                          <div>
+                            <button onClick={()=>openHistoryModal(detailItem,null)} className="px-2 py-1 bg-purple-600 text-white rounded text-xs">Tambah Catatan</button>
+                          </div>
+                        </div>
+                        <div className="mt-2 max-h-48 overflow-y-auto space-y-2">
+                          {detailItem.history && detailItem.history.length ? detailItem.history.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).map(h=>(
+                            <div key={h.id} className="p-2 border rounded">
+                              <div className="flex justify-between">
+                                <div className="text-sm">{h.note}</div>
+                                <div className="text-xs text-slate-400">{new Date(h.date).toLocaleString()}</div>
+                              </div>
+                              <div className="mt-1 flex gap-2">
+                                {(h.action==='NOTE' || h.action==='REMINDER' || h.action==='SEND') && <button onClick={()=>openHistoryModal(detailItem,h)} className="text-xs text-yellow-600">Edit</button>}
+                              </div>
+                            </div>
+                          )) : <div className="text-sm text-slate-500">Belum ada catatan</div>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </section>
+            )}
+
+            {/* Form Modal for create/edit */}
+            {formOpen && formData && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center modal-backdrop p-6">
+                <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl p-6">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-semibold">{formData.id ? 'Edit Transaksi' : 'Tambah Transaksi'}</h3>
+                    <div className="flex gap-2">
+                      <button onClick={()=>setFormOpen(false)} className="px-2 py-1 rounded bg-slate-100">Batal</button>
+                    </div>
+                  </div>
+                  <form onSubmit={e=>{ e.preventDefault(); saveTransaksi(formData); }}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                      <div>
+                        <label className="text-xs">Tipe</label>
+                        <select className="w-full p-2 border rounded" value={formData.tipe} onChange={e=>setFormData({...formData, tipe:e.target.value})}>
+                          <option value="Invoice Final">Invoice Final</option>
+                          <option value="Klaim Progres">Klaim Progres</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs">Tanggal</label>
+                        <input type="date" className="w-full p-2 border rounded" value={formData.tanggal} onChange={e=>setFormData({...formData, tanggal:e.target.value})} />
+                      </div>
+                      <div>
+                        <label className="text-xs">Nama Proyek</label>
+                        <input className="w-full p-2 border rounded" value={formData.proyek} onChange={e=>setFormData({...formData, proyek:e.target.value})} />
+                      </div>
+                      <div>
+                        <label className="text-xs">Nama Klien</label>
+                        <input className="w-full p-2 border rounded" value={formData.klien} onChange={e=>setFormData({...formData, klien:e.target.value})} />
+                      </div>
+                      <div>
+                        <label className="text-xs">Nominal</label>
+                        <input className="w-full p-2 border rounded text-right" value={formData.nominal} onChange={e=>setFormData({...formData, nominal: Number(e.target.value||0)})} />
+                      </div>
+                      <div>
+                        <label className="text-xs">Jumlah Terbayar</label>
+                        <input className="w-full p-2 border rounded text-right" value={formData.amountPaid} onChange={e=>setFormData({...formData, amountPaid: Number(e.target.value||0)})} />
+                      </div>
+                      <div>
+                        <label className="text-xs">Tanggal Jatuh Tempo (jika Invoice)</label>
+                        <input type="date" className="w-full p-2 border rounded" value={formData.dueDate || ''} onChange={e=>setFormData({...formData, dueDate: e.target.value})} />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="text-xs">Keterangan</label>
+                        <textarea className="w-full p-2 border rounded" value={formData.keterangan} onChange={e=>setFormData({...formData, keterangan:e.target.value})}></textarea>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 mt-4">
+                      <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded">{loading ? 'Menyimpan...' : 'Simpan'}</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* History modal */}
+            {historyFormOpen && detailItem && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center modal-backdrop p-6">
+                <div className="bg-white rounded-lg shadow-2xl w-full max-w-md p-6">
+                  <div className="flex justify-between items-center">
+                    <h3 className="font-semibold">Catatan Penagihan - {detailItem.proyek}</h3>
+                    <button onClick={()=>setHistoryFormOpen(false)} className="px-2 py-1 rounded bg-slate-100">Tutup</button>
+                  </div>
+                  <div className="mt-3">
+                    <label className="text-xs">Tipe Aksi</label>
+                    <select className="w-full p-2 border rounded" value={historyDraft.action} onChange={e=>setHistoryDraft({...historyDraft, action:e.target.value})}>
+                      <option value="NOTE">Catatan</option>
+                      <option value="REMINDER">Reminder</option>
+                      <option value="PARTIAL_PAYMENT">Pembayaran Parsial</option>
+                      <option value="SEND">Kirim Dokumen</option>
                     </select>
+                    <label className="text-xs mt-2">Catatan</label>
+                    <textarea className="w-full p-2 border rounded" value={historyDraft.note} onChange={e=>setHistoryDraft({...historyDraft, note:e.target.value})}></textarea>
+                    <div className="flex justify-end gap-2 mt-3">
+                      <button onClick={()=>setHistoryFormOpen(false)} className="px-3 py-1 rounded bg-slate-100">Batal</button>
+                      <button onClick={saveHistory} className="px-3 py-1 rounded bg-purple-600 text-white">{loading ? 'Menyimpan...' : 'Simpan Catatan'}</button>
+                    </div>
+                  </div>
                 </div>
-            `;
-        }
-        
-        function handleFilterChange(element) {
-            const key = element.getAttribute('data-filter-key');
-            state.filters[key] = element.value;
-            updateUI();
-        }
+              </div>
+            )}
 
-        // Fungsi untuk merender tampilan Login
-        function renderLogin() {
-            return `
-                <div class="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-                    <div class="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
-                        <div class="bg-blue-600 p-8 text-center">
-                            <div class="bg-white/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
-                                <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2l4-4m6 2a9 9 0 11-18 0a9 9 0 0118 0z"></path></svg>
-                            </div>
-                            <h1 class="text-2xl font-bold text-white">Kontrol Penagihan</h1>
-                            <p class="text-blue-100 mt-2 text-sm">Aplikasi Supabase & HTML</p>
-                        </div>
-                        <div class="p-8">
-                            <form id="login-form" class="space-y-6">
-                                <div id="login-error" class="hidden bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856a2 2 0 001.789-3.418L13.78 6.582a2 2 0 00-3.56 0L4.223 16.582A2 2 0 006 20.001z"></path></svg>
-                                    <span>Username atau password salah.</span>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                                    <input type="text" id="username" class="w-full pl-4 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="admin / staff">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                                    <input type="password" id="password" class="w-full pl-4 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="••••••">
-                                </div>
-                                <button type="submit" class="w-full bg-blue-600 text-white py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20">Masuk</button>
-                                <div class="text-center text-xs text-gray-400 mt-4">
-                                    Coba login: <b>admin/admin</b> atau <b>staff/staff</b>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
+            {/* Confirmation modal */}
+            {confirm && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center modal-backdrop p-6">
+                <div className="bg-white rounded-lg shadow p-6 max-w-md w-full">
+                  <h4 className="font-semibold mb-2">{confirm.title}</h4>
+                  <p className="text-sm text-slate-600 mb-4">{confirm.message}</p>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={confirm.onCancel} className="px-3 py-1 rounded bg-slate-100">Batal</button>
+                    <button onClick={confirm.onConfirm} className="px-3 py-1 rounded bg-red-600 text-white">Konfirmasi</button>
+                  </div>
                 </div>
-            `;
-        }
+              </div>
+            )}
 
-        // Fungsi untuk merender tampilan Dashboard
-        function renderDashboard() {
-            const filteredInvoices = state.invoices.filter(inv => {
-                const clientMatch = state.filters.client === 'all' || inv.client_name === state.filters.client;
-                const projectMatch = state.filters.project === 'all' || inv.project_name === state.filters.project;
-                const activityMatch = state.filters.activity === 'all' || inv.project_activity === state.filters.activity;
-                return clientMatch && projectMatch && activityMatch && inv.status !== 'PAID';
-            });
+            {/* Error / loading */}
+            {(error || loading) && (
+              <div className="fixed bottom-4 right-4 bg-white shadow rounded p-3">
+                {loading && <div className="flex items-center gap-2"><span className="spinner"></span> Memproses...</div>}
+                {error && <div className="text-sm text-red-600">{error}</div>}
+              </div>
+            )}
 
-            const outstandingFinal = filteredInvoices.filter(inv => inv.status === 'PENDING' || inv.status === 'OVERDUE');
-            const progresKlaim = filteredInvoices.filter(inv => inv.status === 'DRAFT');
+          </main>
+        </div>
+      );
+    }
 
-            const totalOutstanding = outstandingFinal.reduce((sum, inv) => sum + inv.total_amount, 0);
-            const totalClaim = progresKlaim.reduce((sum, inv) => sum + inv.total_amount, 0);
-            const countOverdue = outstandingFinal.filter(inv => inv.status === 'OVERDUE').length;
-
-            return `
-                <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
-                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-                        <div class="flex items-center gap-3">
-                            <div class="bg-blue-600 p-2 rounded-lg">
-                                <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2l4-4m6 2a9 9 0 11-18 0a9 9 0 0118 0z"></path></svg>
-                            </div>
-                            <div>
-                                <h1 class="text-xl font-bold text-gray-900 leading-none">Dashboard Penagihan</h1>
-                                <span class="text-xs text-gray-500 font-medium">Data Realtime dari Supabase</span>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-4">
-                            <div class="text-right hidden sm:block">
-                                <div class="text-sm font-bold text-gray-900">${state.user.name}</div>
-                                <div class="text-xs text-gray-500 uppercase tracking-wider">${state.user.role}</div>
-                            </div>
-                            <div class="h-8 w-px bg-gray-200 mx-1"></div>
-                            <button onclick="handleLogout()" class="text-gray-500 hover:text-red-600 transition-colors p-2 rounded-full hover:bg-red-50" title="Keluar">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4h-14m4 8v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
-                            </button>
-                        </div>
-                    </div>
-                </header>
-                <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                    
-                    <!-- Top Stats -->
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div class="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-xl shadow-lg shadow-red-300/50 p-6 cursor-pointer hover:shadow-red-400 transition-shadow" onclick="filterByStatus('Outstanding')">
-                            <p class="text-red-100 font-medium mb-1">Total Outstanding Final</p>
-                            <p class="text-3xl font-bold">${formatIDR(totalOutstanding)}</p>
-                            <p class="text-sm mt-2 flex items-center gap-1 text-red-100">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.657 0 3 .895 3 2s-1.343 2-3 2v2m0-6c-1.657 0-3 .895-3 2s1.343 2 3 2m-3 6h6m-3-2v4"></path></svg>
-                                ${outstandingFinal.length} Invoice
-                            </p>
-                        </div>
-                        <div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl shadow-lg shadow-blue-300/50 p-6 cursor-pointer hover:shadow-blue-400 transition-shadow" onclick="filterByStatus('Claim')">
-                            <p class="text-blue-100 font-medium mb-1">Total Progres Klaim</p>
-                            <p class="text-3xl font-bold">${formatIDR(totalClaim)}</p>
-                            <p class="text-sm mt-2 flex items-center gap-1 text-blue-100">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                                ${progresKlaim.length} Draft
-                            </p>
-                        </div>
-                        <div class="bg-white border-l-4 border-l-orange-500 rounded-xl shadow-sm p-6">
-                            <div class="flex items-center gap-4">
-                                <div class="p-3 bg-orange-50 rounded-full">
-                                    <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856a2 2 0 001.789-3.418L13.78 6.582a2 2 0 00-3.56 0L4.223 16.582A2 2 0 006 20.001z"></path></svg>
-                                </div>
-                                <div>
-                                    <p class="text-sm text-gray-500 font-medium">Invoice Jatuh Tempo</p>
-                                    <div class="flex items-baseline gap-2">
-                                        <p class="text-2xl font-bold text-gray-900">${countOverdue}</p>
-                                        <span class="text-sm text-gray-500">Dokumen</span>
-                                    </div>
-                                    <p class="text-xs text-orange-600 mt-1 font-medium">Butuh Tindak Lanjut Segera!</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Filters -->
-                    ${renderFilters()}
-
-                    <!-- Tab Section -->
-                    <div class="space-y-8">
-                        <!-- Table 1: Outstanding Invoice Final -->
-                        ${renderInvoiceTable('Outstanding Invoice Final', outstandingFinal, true)}
-                        
-                        <!-- Table 2: Progres Klaim -->
-                        ${renderInvoiceTable('Progres Klaim', progresKlaim, false)}
-                    </div>
-                </main>
-            `;
-        }
-        
-        // Render tabel utama untuk dashboard
-        function renderInvoiceTable(title, invoices, isOutstanding) {
-            const tableRows = invoices.map(inv => {
-                const total = inv.total_amount;
-                const lastHistory = inv.history && inv.history.length > 0 ? inv.history[inv.history.length - 1] : null;
-                const aging = getAging(inv.date_created, inv.date_paid);
-                
-                let agingColor = "text-gray-700";
-                if (isOutstanding && aging > 30) agingColor = "text-red-600 font-bold";
-
-                return `
-                    <tr class="hover:bg-gray-50 transition-colors cursor-pointer" onclick="navigateTo('detail', ${inv.id})">
-                        <td class="p-4">${inv.client_name}</td>
-                        <td class="p-4 text-sm font-mono">${inv.invoice_number}</td>
-                        <td class="p-4 text-center">
-                            <span class="text-lg ${agingColor}">${aging}</span>
-                            <span class="text-[10px] text-gray-400 block">Hari</span>
-                        </td>
-                        <td class="p-4 text-right font-mono font-bold text-gray-900">${formatIDR(total)}</td>
-                        <td class="p-4 text-center">${getStatusBadge(inv.status)}</td>
-                        <td class="p-4 text-sm text-gray-500">${lastHistory ? formatDate(lastHistory.date) + ': ' + lastHistory.text.substring(0, 30) + '...' : '-'}</td>
-                    </tr>
-                `;
-            }).join('');
-
-            return `
-                <div class="bg-white border border-gray-200 shadow-sm rounded-xl overflow-hidden">
-                    <h3 class="text-lg font-bold p-4 bg-gray-50 border-b">${title}</h3>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="bg-gray-50 border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500 font-semibold">
-                                    <th class="p-4 w-1/4">Klien</th>
-                                    <th class="p-4 w-1/6">Nomor Dokumen</th>
-                                    <th class="p-4 text-center w-20">Umur</th>
-                                    <th class="p-4 text-right w-1/6">Total Tagihan</th>
-                                    <th class="p-4 text-center w-1/6">Status</th>
-                                    <th class="p-4 w-1/4">Histori Terakhir</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                ${tableRows.length > 0 ? tableRows : `
-                                <tr><td colspan="6" class="p-8 text-center text-gray-400">Tidak ada data ${title} yang sesuai filter.</td></tr>
-                                `}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-        }
-
-        // Fungsi untuk merender tampilan Detail Invoice
-        function renderDetail() {
-            const inv = state.selectedInvoice;
-            if (!inv) return '<div class="p-10 text-center text-red-600">Invoice tidak ditemukan.</div>';
-
-            const isPaid = inv.status === 'PAID';
-            const total = inv.total_amount;
-            const sisaBayar = total - inv.amount_paid;
-
-            let statusAction = '';
-            if (state.user.role === 'admin') {
-                if (inv.status === 'DRAFT') {
-                    statusAction = `<button onclick="showConfirmation('final', ${inv.id})" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2l4-4m6 2a9 9 0 11-18 0a9 9 0 0118 0z"></path></svg>
-                                        Finalisasi Invoice
-                                    </button>`;
-                } else if (!isPaid) {
-                    statusAction = `<button onclick="showConfirmation('paid', ${inv.id})" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c1.657 0 3 .895 3 2s-1.343 2-3 2v2m0-6c-1.657 0-3 .895-3 2s1.343 2-3 2m-3 6h6m-3-2v4"></path></svg>
-                                        Set Lunas (Pembayaran Penuh)
-                                    </button>`;
-                }
-            }
-
-
-            return `
-                <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
-                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-                        <button onclick="navigateTo('dashboard')" class="text-gray-500 hover:text-blue-600 flex items-center gap-2">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
-                            <span class="text-sm font-medium hidden sm:inline">Kembali ke Dashboard</span>
-                        </button>
-                        <div class="flex items-center gap-4">
-                            ${statusAction}
-                            <button onclick="handleLogout()" class="text-gray-500 hover:text-red-600 transition-colors p-2 rounded-full hover:bg-red-50" title="Keluar">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4h-14m4 8v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
-                            </button>
-                        </div>
-                    </div>
-                </header>
-                <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                    <div class="bg-white rounded-xl shadow-lg p-6 mb-8 border-t-4 ${isPaid ? 'border-t-green-500' : (inv.status === 'OVERDUE' ? 'border-t-red-500' : 'border-t-blue-500')}">
-                        <div class="flex justify-between items-start mb-4">
-                            <div>
-                                <h2 class="text-3xl font-extrabold text-gray-900">${inv.invoice_number}</h2>
-                                <p class="text-lg text-gray-600">${inv.client_name}</p>
-                            </div>
-                            ${getStatusBadge(inv.status)}
-                        </div>
-
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-6 border-b pb-4">
-                            <div><span class="text-gray-500 block">Proyek</span><span class="font-medium">${inv.project_name}</span></div>
-                            <div><span class="text-gray-500 block">Kegiatan</span><span class="font-medium">${inv.project_activity}</span></div>
-                            <div><span class="text-gray-500 block">Tanggal Dibuat</span><span class="font-medium">${formatDate(inv.date_created)}</span></div>
-                            <div><span class="text-gray-500 block">Jatuh Tempo</span><span class="font-bold ${inv.status === 'OVERDUE' ? 'text-red-600' : ''}">${formatDate(inv.date_due)}</span></div>
-                        </div>
-
-                        <!-- Summary Pembayaran -->
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
-                            <div class="p-3 bg-gray-50 rounded-lg border">
-                                <span class="text-xs text-gray-500 block">Total Tagihan (DPP + PPN)</span>
-                                <span class="text-xl font-bold text-gray-800">${formatIDR(total)}</span>
-                            </div>
-                            <div class="p-3 bg-gray-50 rounded-lg border">
-                                <span class="text-xs text-gray-500 block">Sudah Dibayar</span>
-                                <span class="text-xl font-bold ${inv.amount_paid > 0 ? 'text-green-600' : 'text-gray-400'}">${formatIDR(inv.amount_paid)}</span>
-                            </div>
-                            <div class="p-3 bg-gray-50 rounded-lg border ${sisaBayar > 0 ? 'border-red-300 bg-red-50' : 'border-green-300 bg-green-50'}">
-                                <span class="text-xs ${sisaBayar > 0 ? 'text-red-700' : 'text-green-700'} block font-bold">Sisa Belum Dibayar</span>
-                                <span class="text-2xl font-extrabold ${sisaBayar > 0 ? 'text-red-700' : 'text-green-700'}">${formatIDR(sisaBayar)}</span>
-                            </div>
-                        </div>
-                        
-                        <!-- Form Update Pembayaran Parsial (Hanya Admin & Belum Lunas) -->
-                        ${!isPaid && state.user.role === 'admin' ? `
-                            <div class="mt-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                                <h4 class="text-sm font-bold text-yellow-800 mb-2">Update Pembayaran Parsial</h4>
-                                <div class="flex gap-2">
-                                    <input type="number" id="partial-payment" placeholder="Nominal Parsial (Contoh: 500000)" class="w-full border border-yellow-300 rounded-lg px-3 py-2 text-sm">
-                                    <button onclick="handlePartialPayment(${inv.id})" class="bg-yellow-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-yellow-700 flex-shrink-0">
-                                        Update Bayar
-                                    </button>
-                                </div>
-                                <p class="text-xs text-yellow-700 mt-1">Total yang sudah dibayar: ${formatIDR(inv.amount_paid)}</p>
-                            </div>
-                        ` : ''}
-
-                    </div>
-
-                    <!-- History Section -->
-                    <div class="bg-white rounded-xl shadow-md p-6">
-                        <div class="flex justify-between items-center mb-4 border-b pb-3">
-                            <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0a9 9 0 0118 0z"></path></svg>
-                                Histori Penagihan
-                            </h3>
-                            <button onclick="showHistoryModal()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                                Tambah Catatan
-                            </button>
-                        </div>
-                        
-                        <div class="space-y-4 max-h-96 overflow-y-auto pr-2">
-                            ${inv.history && inv.history.length > 0 ? 
-                                [...inv.history].reverse().map(item => `
-                                    <div class="flex gap-4 text-sm bg-gray-50 p-3 rounded-lg border border-gray-200 shadow-sm">
-                                        <div class="text-gray-500 font-mono text-xs whitespace-nowrap pt-0.5">${formatDate(item.date)}</div>
-                                        <div class="text-gray-800 flex-1">${item.text}</div>
-                                    </div>
-                                `).join('')
-                                : 
-                                `<div class="text-center text-gray-400 py-4 text-sm italic">Belum ada catatan histori penagihan.</div>`
-                            }
-                        </div>
-                    </div>
-                </main>
-            `;
-        }
-
-        // --- 6. MODAL HANDLERS ---
-        
-        // Menampilkan Modal Konfirmasi
-        function showConfirmation(actionType, id) {
-            let message = '';
-            let okText = 'Lanjutkan';
-            let okColor = 'bg-red-600 hover:bg-red-700';
-
-            if (actionType === 'final') {
-                message = `Anda akan memfinalisasi Invoice/Klaim **${state.selectedInvoice.invoice_number}** menjadi status **PENDING** (Outstanding Final). Tindakan ini tidak dapat dibatalkan. Lanjutkan?`;
-                okText = 'Finalisasi';
-                okColor = 'bg-green-600 hover:bg-green-700';
-            } else if (actionType === 'paid') {
-                message = `Anda akan mengubah status **${state.selectedInvoice.invoice_number}** menjadi **LUNAS** (PAID). Ini akan mengupdate tanggal bayar dan jumlah bayar penuh. Lanjutkan?`;
-                okText = 'Konfirmasi Lunas';
-                okColor = 'bg-blue-600 hover:bg-blue-700';
-            } else {
-                return;
-            }
-
-            document.getElementById('confirm-message').innerHTML = message;
-            const okButton = document.getElementById('confirm-ok');
-            okButton.textContent = okText;
-            okButton.className = `px-4 py-2 rounded-lg text-white font-medium text-sm ${okColor}`;
-            
-            // Atur aksi konfirmasi
-            state.confirmationAction = () => {
-                if (actionType === 'final') {
-                    updateInvoiceStatus(id, 'PENDING');
-                } else if (actionType === 'paid') {
-                    updateInvoiceStatus(id, 'PAID');
-                }
-                document.getElementById('confirmation-modal').classList.add('hidden');
-                state.confirmationAction = null;
-            };
-
-            document.getElementById('confirmation-modal').classList.remove('hidden');
-        }
-
-        // Menutup Modal Konfirmasi
-        document.getElementById('confirm-cancel').onclick = () => {
-            document.getElementById('confirmation-modal').classList.add('hidden');
-            state.confirmationAction = null;
-        };
-
-        // Aksi OK Modal Konfirmasi
-        document.getElementById('confirm-ok').onclick = () => {
-            if (state.confirmationAction) {
-                state.confirmationAction();
-            }
-        };
-
-        // Menampilkan Modal Histori
-        function showHistoryModal() {
-            document.getElementById('history-date').value = new Date().toISOString().split('T')[0];
-            document.getElementById('history-text').value = '';
-            document.getElementById('history-modal').classList.remove('hidden');
-        }
-
-        // Menutup Modal Histori
-        document.getElementById('history-close').onclick = () => {
-            document.getElementById('history-modal').classList.add('hidden');
-        };
-
-        // Aksi Simpan Histori
-        document.getElementById('history-save').onclick = () => {
-            const date = document.getElementById('history-date').value;
-            const text = document.getElementById('history-text').value.trim();
-            if (text && state.selectedInvoice) {
-                const note = { date, text };
-                addHistoryNote(state.selectedInvoice.id, note);
-                document.getElementById('history-modal').classList.add('hidden');
-            } else {
-                // Menggunakan custom modal instead of alert
-                showConfirmationModalCustom(
-                    'Peringatan', 
-                    'Catatan histori tidak boleh kosong. Harap isi catatan Anda.',
-                    'Tutup',
-                    'bg-gray-500 hover:bg-gray-600',
-                    () => {}
-                );
-            }
-        };
-
-        // Handle Pembayaran Parsial
-        function handlePartialPayment(id) {
-            const amountInput = document.getElementById('partial-payment');
-            const amount = parseFloat(amountInput.value);
-            const invoice = state.invoices.find(inv => inv.id === id);
-            const totalBayarSaatIni = invoice.amount_paid || 0;
-            const totalTagihan = invoice.total_amount;
-
-            if (isNaN(amount) || amount <= 0) {
-                showConfirmationModalCustom('Peringatan', 'Nominal pembayaran parsial tidak valid.', 'Tutup', 'bg-gray-500 hover:bg-gray-600', () => {});
-                return;
-            }
-            if (totalBayarSaatIni + amount > totalTagihan) {
-                showConfirmationModalCustom('Peringatan', `Pembayaran melebihi total tagihan (${formatIDR(totalTagihan)}). Harap periksa nominal.`, 'Tutup', 'bg-gray-500 hover:bg-gray-600', () => {});
-                return;
-            }
-
-            const newAmountPaid = totalBayarSaatIni + amount;
-            
-            // Gunakan konfirmasi kustom untuk pembayaran parsial
-            showConfirmationModalCustom('Konfirmasi Pembayaran Parsial', 
-                `Anda akan mencatat pembayaran sebesar ${formatIDR(amount)} untuk invoice ${invoice.invoice_number}. Total pembayaran baru: ${formatIDR(newAmountPaid)}. Lanjutkan?`,
-                'Konfirmasi', 'bg-blue-600 hover:bg-blue-700',
-                () => updatePayment(id, newAmountPaid)
-            );
-        }
-
-        // Fungsi Konfirmasi Custom untuk Parsial Payment/Alert Pengganti
-        function showConfirmationModalCustom(title, message, okText, okColor, action) {
-            document.getElementById('confirmation-modal').querySelector('h3').textContent = title;
-            document.getElementById('confirm-message').innerHTML = message;
-            
-            const okButton = document.getElementById('confirm-ok');
-            okButton.textContent = okText;
-            okButton.className = `px-4 py-2 rounded-lg text-white font-medium text-sm ${okColor}`;
-            
-            // Jika action adalah no-op (misalnya, hanya alert), kita perlu memastikan tombol cancel tersembunyi
-            const cancelButton = document.getElementById('confirm-cancel');
-            if (okText === 'Tutup') {
-                cancelButton.classList.add('hidden');
-            } else {
-                cancelButton.classList.remove('hidden');
-            }
-
-            state.confirmationAction = () => {
-                action();
-                document.getElementById('confirmation-modal').classList.add('hidden');
-                state.confirmationAction = null;
-                cancelButton.classList.remove('hidden'); // Reset cancel button visibility
-            };
-
-            document.getElementById('confirmation-modal').classList.remove('hidden');
-        }
-
-        // Fungsi dummy untuk filterByStatus (diperlukan karena ada onclick di dashboard)
-        function filterByStatus(type) {
-             // Untuk demo sederhana ini, kita hanya akan mereset filter dan memuat ulang UI
-            state.filters = { client: 'all', project: 'all', activity: 'all' };
-            // Anda dapat menambahkan logika filter di sini jika perlu
-            updateUI();
-        }
-
-
-        // --- 7. AUTHENTICATION HANDLERS ---
-
-        function handleLogin(event) {
-            event.preventDefault();
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            const errorEl = document.getElementById('login-error');
-
-            if ((username === 'admin' && password === 'admin') || (username === 'staff' && password === 'staff')) {
-                const role = username === 'admin' ? 'admin' : 'staff';
-                const name = username === 'admin' ? 'Administrator Keuangan' : 'Staff Penagihan';
-                state.user = { name, role };
-                localStorage.setItem('user', JSON.stringify(state.user));
-                errorEl.classList.add('hidden');
-                navigateTo('dashboard');
-            } else {
-                errorEl.classList.remove('hidden');
-            }
-        }
-
-        function handleLogout() {
-            state.user = null;
-            localStorage.removeItem('user');
-            navigateTo('login');
-        }
-
-        // --- 8. GLOBAL UI UPDATE & INIT ---
-        
-        function updateUI() {
-            const container = document.getElementById('app-container');
-            container.innerHTML = ''; // Bersihkan konten
-
-            if (!state.user) {
-                container.innerHTML = renderLogin();
-                document.getElementById('login-form').onsubmit = handleLogin;
-            } else if (state.currentView === 'dashboard') {
-                container.innerHTML = renderDashboard();
-                // Re-apply filters after rendering
-                ['client', 'project', 'activity'].forEach(key => {
-                    const el = document.getElementById(`filter-${key}`);
-                    if (el) el.value = state.filters[key];
-                });
-            } else if (state.currentView === 'detail') {
-                container.innerHTML = renderDetail();
-            }
-            
-            // Konversi Lucide icons di HTML yang baru dirender
-            lucide.createIcons(); 
-        }
-
-        // Fungsi Inisialisasi Utama
-        window.onload = async () => {
-            // 1. Inisialisasi Supabase
-            // PERBAIKAN: Menggunakan variabel global 'supabase' yang diekspos oleh CDN
-            supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            
-            // 2. Seeding Data (jika tabel kosong)
-            await seedDatabase();
-
-            // 3. Cek Auth dan Load Data
-            if (state.user) {
-                await fetchData();
-            } else {
-                updateUI();
-            }
-        };
-    </script>
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
 </body>
 </html>
