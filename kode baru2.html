@@ -1,0 +1,823 @@
+<html>
+import React, { useState, useEffect } from 'react';
+import { 
+  ShoppingCart, Search, Plus, Minus, Trash2, Utensils, Coffee, X, 
+  User, Lock, ArrowRight, LogOut, GraduationCap, ShieldCheck, 
+  UserCircle, ChefHat, Loader2, WifiOff, Phone, 
+  LayoutDashboard, ClipboardList, Users, Wallet, BookOpen, BarChart3,
+  Database, CheckCircle, AlertCircle
+} from 'lucide-react';
+
+// --- KONFIGURASI SUPABASE (REST API) ---
+const supabaseUrl = 'https://tjojpjcgwnkklocanuqt.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqb2pwamNnd25ra2xvY2FudXF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MzQwNDUsImV4cCI6MjA3OTQxMDA0NX0.JqlGuZG0wu23ySjA1yOXbE7L_mHh3qUspqhtHJ_Mlmw';
+
+// --- DATA MOCK (SAMPEL) ---
+// Kita gunakan ini untuk inisialisasi data jika database masih kosong
+const MOCK_MENU_ITEMS = [
+  { name: "Nasi Goreng Spesial", price: 18000, category: "makanan", image: "https://bing.com/th?id=OSK.05368722ca716fa5bdff5caa636e453f", description: "Nasi goreng dengan telur." },
+  { name: "Mie Ayam Bakso", price: 15000, category: "makanan", image: "https://static.vecteezy.com/system/resources/previews/015/958/027/non_2x/mie-ayam-or-noodles-chicken-is-traditional-food-from-indonesia-asia-made-from-noodle-chicken-chicken-broth-spinach-sometimes-with-meatball-photo.jpg", description: "Mie ayam kenyal." },
+  { name: "Ayam Geprek Sambal Bawang", price: 20000, category: "makanan", image: "https://img-global.cpcdn.com/recipes/ae5a1335a284b9e9/680x482cq70/255-ayam-geprek-sambal-bawang-foto-resep-utama.jpg", description: "Pedas nampol." },
+  { name: "Es Teh Manis Jumbo", price: 5000, category: "minuman", image: "https://images.unsplash.com/photo-1556679343-c7306c1976bc", description: "Segar dan manis." },
+  { name: "Kopi Susu Gula Aren", price: 12000, category: "minuman", image: "https://images.unsplash.com/photo-1541167760496-1628856ab772", description: "Kopi kekinian." }
+];
+
+// Data Sampel Pesanan Lengkap (Siswa, Tamu, Admin)
+const SAMPLE_ORDERS_DATA = [
+  { 
+    customer_name: 'Budi Santoso', 
+    customer_role: 'siswa', 
+    total_price: 23000, 
+    status: 'selesai', 
+    created_at: new Date(Date.now() - 86400000 * 2).toISOString(), // 2 hari lalu
+    items: [
+      { menu_name: 'Nasi Goreng Spesial', quantity: 1, price_at_purchase: 18000 }, 
+      { menu_name: 'Es Teh Manis Jumbo', quantity: 1, price_at_purchase: 5000 }
+    ] 
+  },
+  { 
+    customer_name: 'Siti Aminah', 
+    customer_role: 'tamu', 
+    customer_phone: '081234567890', 
+    total_price: 40000, 
+    status: 'pending', 
+    created_at: new Date(Date.now() - 3600000 * 4).toISOString(), // 4 jam lalu
+    items: [
+      { menu_name: 'Ayam Geprek Sambal Bawang', quantity: 2, price_at_purchase: 20000 }
+    ] 
+  },
+  { 
+    customer_name: 'Andi Pratama', 
+    customer_role: 'siswa', 
+    total_price: 18000, 
+    status: 'selesai', 
+    created_at: new Date(Date.now() - 86400000 * 1).toISOString(), // 1 hari lalu
+    items: [
+      { menu_name: 'Nasi Goreng Spesial', quantity: 1, price_at_purchase: 18000 }
+    ] 
+  },
+  { 
+    customer_name: 'Pak Guru Budi', 
+    customer_role: 'admin', 
+    total_price: 30000, 
+    status: 'selesai', 
+    created_at: new Date(Date.now() - 3600000 * 2).toISOString(), // 2 jam lalu
+    items: [
+      { menu_name: 'Mie Ayam Bakso', quantity: 2, price_at_purchase: 15000 }
+    ] 
+  },
+  { 
+    customer_name: 'Rina Wati', 
+    customer_role: 'tamu', 
+    customer_phone: '089876543210', 
+    total_price: 25000, 
+    status: 'dibatalkan', 
+    created_at: new Date(Date.now() - 1800000).toISOString(), // 30 menit lalu
+    items: [
+      { menu_name: 'Ayam Geprek Sambal Bawang', quantity: 1, price_at_purchase: 20000 },
+      { menu_name: 'Es Teh Manis Jumbo', quantity: 1, price_at_purchase: 5000 }
+    ] 
+  },
+];
+
+// Helper Request
+const supabaseRequest = async (endpoint, method = 'GET', body = null) => {
+  const headers = {
+    'apikey': supabaseKey,
+    'Authorization': `Bearer ${supabaseKey}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation'
+  };
+  const options = { method, headers, body: body ? JSON.stringify(body) : null };
+  const response = await fetch(`${supabaseUrl}/rest/v1/${endpoint}`, options);
+  if (response.status === 404) throw new Error('Table not found');
+  if (!response.ok) {
+     const err = await response.json();
+     throw new Error(err.message || 'Request failed');
+  }
+  return response.json();
+};
+
+// Helper Rupiah
+const formatRupiah = (number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(number);
+
+// --- Komponen Logo Koki ---
+const ChefLogo = ({ className }) => (
+  <div className={`relative overflow-hidden rounded-full border-2 border-white shadow-md ${className}`}>
+    <img 
+      src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiIZNm0p847w_vzBhFL27maZYPzhhrG0oIt9J-veBYqxKabDiO1k5VjChDKqTYdCE6soM-VFcUzJgUxMZqYwyo3jpU79PkX04ZIioF82kYDcRK9-ph6-dTXdIh1rwW5Od0WG_96oYj_lHfZ0bepe98XYdb-w5IkQZ964Xeq2Qve8lMG44-ZhaP3fd6dd1Q/s320/WhatsApp%20Image%202025-11-21%20at%2016.41.08.jpeg"  
+      alt="Logo Kantin Digital"
+      className="w-full h-full object-cover"
+      onError={(e) => { 
+        e.target.onerror = null; 
+        e.target.src="https://placehold.co/320x320/FF6347/FFFFFF?text=CHEF";
+      }}
+    />
+  </div>
+);
+
+// --- Komponen Admin Dashboard ---
+const AdminDashboard = ({ menuItems, onLogout, refreshData }) => {
+  const [activeTab, setActiveTab] = useState('menu');
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [seedingStatus, setSeedingStatus] = useState(null); // null, 'loading', 'success', 'error'
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const fetchOrders = async () => {
+    setLoading(true);
+    try {
+      const data = await supabaseRequest('orders?select=*,order_items(*)&order=created_at.desc');
+      setOrders(data || []);
+    } catch (error) {
+      console.error("Gagal ambil data admin:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fungsi untuk Seed (Isi) Data Sampel ke Supabase
+  const handleSeedData = async () => {
+    if(!confirm("Apakah Anda yakin ingin mengisi database dengan data sampel? Data ini akan masuk ke laporan.")) return;
+    
+    setSeedingStatus('loading');
+    try {
+      // 1. Cek apakah menu sudah ada, jika belum, insert menu sampel
+      const currentMenus = await supabaseRequest('menus?select=id');
+      if (currentMenus.length === 0) {
+         await supabaseRequest('menus', 'POST', MOCK_MENU_ITEMS);
+      }
+
+      // 2. Insert Pesanan Sampel
+      for (const order of SAMPLE_ORDERS_DATA) {
+        // a. Buat Header Pesanan
+        const orderPayload = {
+          customer_name: order.customer_name,
+          customer_role: order.customer_role,
+          customer_phone: order.customer_phone || null,
+          total_price: order.total_price,
+          status: order.status,
+          created_at: order.created_at
+        };
+        
+        const orderResponse = await supabaseRequest('orders', 'POST', orderPayload);
+        const newOrder = orderResponse[0];
+
+        // b. Buat Detail Item Pesanan
+        if (newOrder && order.items) {
+          const itemsPayload = order.items.map(item => ({
+            order_id: newOrder.id,
+            menu_name: item.menu_name,
+            quantity: item.quantity,
+            price_at_purchase: item.price_at_purchase
+          }));
+          await supabaseRequest('order_items', 'POST', itemsPayload);
+        }
+      }
+
+      setSeedingStatus('success');
+      fetchOrders(); // Refresh data tabel
+      refreshData(); // Refresh data menu di parent
+      setTimeout(() => setSeedingStatus(null), 3000);
+
+    } catch (error) {
+      console.error("Seeding error:", error);
+      setSeedingStatus('error');
+      setTimeout(() => setSeedingStatus(null), 3000);
+    }
+  };
+
+  const pendingOrders = orders.filter(o => o.status === 'pending');
+  
+  // Filter Tamu Unik
+  const guests = orders.filter(o => o.customer_role === 'tamu').reduce((acc, curr) => {
+    if (!acc.find(g => g.customer_name === curr.customer_name && g.customer_phone === curr.customer_phone)) acc.push(curr);
+    return acc;
+  }, []);
+
+  // Filter Siswa Unik
+  const students = orders.filter(o => o.customer_role === 'siswa').reduce((acc, curr) => {
+    if (!acc.find(s => s.customer_name === curr.customer_name)) acc.push(curr);
+    return acc;
+  }, []);
+
+  const totalRevenue = orders.filter(o => o.status === 'selesai').reduce((sum, o) => sum + o.total_price, 0);
+
+  const handleStatusChange = async (orderId, newStatus) => {
+    // Optimistic update
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+    try {
+      await supabaseRequest(`orders?id=eq.${orderId}`, 'PATCH', { status: newStatus });
+    } catch (e) { 
+      console.error("Gagal update status");
+      fetchOrders(); // Revert jika gagal
+    }
+  };
+
+  const renderContent = () => {
+    if (loading && orders.length === 0) return <div className="p-10 text-center"><Loader2 className="animate-spin mx-auto" /> Memuat data...</div>;
+
+    switch (activeTab) {
+      case 'menu':
+        return (
+          <div className="space-y-4 animate-fade-in-up">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-800">Manajemen Menu</h3>
+                <p className="text-sm text-gray-500">Total {menuItems.length} menu tersedia</p>
+              </div>
+              <button className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm hover:bg-slate-900 shadow-md flex items-center gap-2">
+                <Plus size={16}/> Tambah Menu
+              </button>
+            </div>
+            
+            {menuItems.length === 0 ? (
+               <div className="text-center py-10 bg-white rounded-xl border border-dashed">
+                 <Utensils className="mx-auto text-gray-300 mb-2" size={48} />
+                 <p className="text-gray-500">Belum ada menu.</p>
+                 <button onClick={handleSeedData} className="mt-2 text-blue-600 hover:underline text-sm">
+                    Klik di sini untuk isi menu sampel
+                 </button>
+               </div>
+            ) : (
+              <div className="overflow-hidden bg-white rounded-xl shadow-sm border border-gray-200">
+                <table className="w-full text-sm text-left text-gray-500">
+                  <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-6 py-3">Gambar</th>
+                      <th className="px-6 py-3">Nama Menu</th>
+                      <th className="px-6 py-3">Kategori</th>
+                      <th className="px-6 py-3">Harga</th>
+                      <th className="px-6 py-3 text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {menuItems.map((item) => (
+                      <tr key={item.id} className="bg-white hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-3"><img src={item.image} alt={item.name} className="w-10 h-10 rounded-lg object-cover border" onError={(e)=>{e.target.src="https://placehold.co/40x40"}}/></td>
+                        <td className="px-6 py-3 font-medium text-gray-900">{item.name}</td>
+                        <td className="px-6 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${item.category === 'makanan' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>{item.category}</span></td>
+                        <td className="px-6 py-3 font-semibold">{formatRupiah(item.price)}</td>
+                        <td className="px-6 py-3 text-right"><button className="text-blue-600 hover:text-blue-800 font-medium">Edit</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      case 'pembayaran':
+        return (
+          <div className="space-y-4 animate-fade-in-up">
+             <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-gray-800">Kasir & Pembayaran</h3>
+             </div>
+             <div className="grid gap-3">
+               {orders.map(order => (
+                 <div key={order.id} className={`p-4 rounded-xl border transition-all ${order.status === 'pending' ? 'bg-white border-l-4 border-l-orange-500 shadow-md' : 'bg-gray-50 border-gray-200 opacity-80'}`}>
+                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                     <div className="flex-1">
+                       <div className="flex items-center gap-2 mb-1">
+                          <span className="font-bold text-gray-800 text-lg">#{order.id}</span>
+                          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{new Date(order.created_at).toLocaleString('id-ID')}</span>
+                       </div>
+                       <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-gray-700">{order.customer_name}</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase font-bold text-white ${order.customer_role === 'tamu' ? 'bg-teal-600' : order.customer_role === 'admin' ? 'bg-slate-600' : 'bg-red-600'}`}>
+                            {order.customer_role}
+                          </span>
+                          {order.customer_phone && (
+                            <span className="text-xs text-gray-500 flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded"><Phone size={10}/> {order.customer_phone}</span>
+                          )}
+                       </div>
+                       
+                       {/* Detail Item Mini */}
+                       <div className="mt-2 text-xs text-gray-500">
+                          {order.order_items && order.order_items.map((item, idx) => (
+                            <span key={idx} className="mr-2">{item.menu_name} ({item.quantity}x), </span>
+                          ))}
+                       </div>
+
+                       <p className="text-red-600 font-bold mt-2 text-lg">{formatRupiah(order.total_price)}</p>
+                     </div>
+                     <div className="flex gap-2 w-full md:w-auto">
+                        {order.status === 'pending' && (
+                          <>
+                            <button onClick={() => handleStatusChange(order.id, 'dibatalkan')} className="flex-1 md:flex-none border border-red-200 text-red-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-50 transition-colors">
+                              Batal
+                            </button>
+                            <button onClick={() => handleStatusChange(order.id, 'selesai')} className="flex-1 md:flex-none bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 shadow-sm flex items-center justify-center gap-1 transition-colors">
+                              <ShieldCheck size={16}/> Terima Bayar
+                            </button>
+                          </>
+                        )}
+                        {order.status === 'selesai' && (
+                          <span className="bg-green-100 text-green-700 px-3 py-1 rounded-lg text-xs font-bold border border-green-200 flex items-center gap-1">
+                            <ShieldCheck size={14}/> Lunas
+                          </span>
+                        )}
+                        {order.status === 'dibatalkan' && (
+                           <span className="bg-red-100 text-red-700 px-3 py-1 rounded-lg text-xs font-bold border border-red-200">
+                             Dibatalkan
+                           </span>
+                        )}
+                     </div>
+                   </div>
+                 </div>
+               ))}
+               {orders.length === 0 && (
+                 <div className="text-center py-12 bg-white rounded-xl border border-dashed">
+                    <p className="text-gray-500">Belum ada pesanan.</p>
+                 </div>
+               )}
+             </div>
+          </div>
+        );
+      case 'laporan':
+        return (
+          <div className="space-y-6 animate-fade-in-up">
+            <div className="flex justify-between items-center">
+               <h3 className="text-xl font-bold text-gray-800">Laporan Penjualan</h3>
+               <button 
+                  onClick={handleSeedData} 
+                  disabled={seedingStatus === 'loading'}
+                  className="text-xs flex items-center gap-2 text-blue-600 hover:bg-blue-50 px-3 py-2 rounded border border-blue-200 transition-colors"
+               >
+                  {seedingStatus === 'loading' ? <Loader2 className="animate-spin" size={14}/> : <Database size={14}/>}
+                  {seedingStatus === 'loading' ? 'Menyinkronkan...' : 'Update Data Sampel ke DB'}
+               </button>
+            </div>
+
+            {seedingStatus === 'success' && (
+              <div className="bg-green-50 text-green-700 p-3 rounded-lg text-sm flex items-center gap-2 border border-green-200">
+                <CheckCircle size={16}/> Data sampel berhasil di-upload ke Supabase!
+              </div>
+            )}
+            {seedingStatus === 'error' && (
+              <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm flex items-center gap-2 border border-red-200">
+                <AlertCircle size={16}/> Gagal upload data. Pastikan koneksi lancar.
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 relative overflow-hidden">
+                  <div className="absolute -right-4 -top-4 bg-green-50 rounded-full w-24 h-24"></div>
+                  <div className="flex items-center gap-3 mb-2 relative z-10">
+                    <div className="p-2 bg-green-100 text-green-600 rounded-lg"><Wallet size={24}/></div>
+                    <p className="text-gray-500 text-sm font-medium">Total Pendapatan</p>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900 relative z-10">{formatRupiah(totalRevenue)}</p>
+               </div>
+               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 relative overflow-hidden">
+                  <div className="absolute -right-4 -top-4 bg-blue-50 rounded-full w-24 h-24"></div>
+                  <div className="flex items-center gap-3 mb-2 relative z-10">
+                    <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><ClipboardList size={24}/></div>
+                    <p className="text-gray-500 text-sm font-medium">Total Transaksi</p>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900 relative z-10">{orders.length}</p>
+               </div>
+               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 relative overflow-hidden">
+                  <div className="absolute -right-4 -top-4 bg-orange-50 rounded-full w-24 h-24"></div>
+                  <div className="flex items-center gap-3 mb-2 relative z-10">
+                    <div className="p-2 bg-orange-100 text-orange-600 rounded-lg"><Loader2 size={24}/></div>
+                    <p className="text-gray-500 text-sm font-medium">Pesanan Pending</p>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900 relative z-10">{pendingOrders.length}</p>
+               </div>
+            </div>
+
+            {/* Tabel Ringkasan Terakhir */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 mt-6 p-4">
+              <h4 className="font-bold text-gray-700 mb-4">5 Transaksi Terakhir</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead>
+                    <tr className="text-gray-500 border-b"><th className="pb-2">ID</th><th className="pb-2">Nama</th><th className="pb-2">Total</th><th className="pb-2">Status</th></tr>
+                  </thead>
+                  <tbody>
+                    {orders.slice(0,5).map(o => (
+                      <tr key={o.id} className="border-b last:border-0">
+                        <td className="py-2">#{o.id}</td>
+                        <td className="py-2">{o.customer_name}</td>
+                        <td className="py-2 font-medium">{formatRupiah(o.total_price)}</td>
+                        <td className="py-2"><span className={`text-xs px-2 py-1 rounded ${o.status==='selesai'?'bg-green-100 text-green-700':'bg-orange-100 text-orange-700'}`}>{o.status}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      case 'tamu':
+        return (
+          <div className="space-y-4 animate-fade-in-up">
+             <h3 className="text-xl font-bold text-gray-800">Data Tamu</h3>
+             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <table className="w-full text-sm text-left text-gray-500">
+                  <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b"><tr><th className="px-6 py-3">Nama Tamu</th><th className="px-6 py-3">No. Handphone</th><th className="px-6 py-3">Terakhir Berkunjung</th></tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {guests.map((g, i) => (
+                      <tr key={i} className="bg-white hover:bg-gray-50"><td className="px-6 py-4 font-medium text-gray-900">{g.customer_name}</td><td className="px-6 py-4">{g.customer_phone || '-'}</td><td className="px-6 py-4 text-gray-400">{new Date(g.created_at).toLocaleDateString()}</td></tr>
+                    ))}
+                    {guests.length === 0 && <tr><td colSpan="3" className="text-center py-8 text-gray-400">Belum ada data tamu.</td></tr>}
+                  </tbody>
+                </table>
+             </div>
+          </div>
+        );
+      case 'siswa':
+        return (
+          <div className="space-y-4 animate-fade-in-up">
+             <h3 className="text-xl font-bold text-gray-800">Data Siswa</h3>
+             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <table className="w-full text-sm text-left text-gray-500">
+                  <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b"><tr><th className="px-6 py-3">Nama / NIS</th><th className="px-6 py-3">Terakhir Jajan</th><th className="px-6 py-3">Status</th></tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {students.map((s, i) => (
+                      <tr key={i} className="bg-white hover:bg-gray-50">
+                        <td className="px-6 py-4 font-medium text-gray-900">{s.customer_name}</td>
+                        <td className="px-6 py-4 text-gray-400">{new Date(s.created_at).toLocaleDateString()}</td>
+                        <td className="px-6 py-4"><span className="text-green-600 bg-green-50 px-2 py-1 rounded text-xs font-medium">Aktif</span></td>
+                      </tr>
+                    ))}
+                    {students.length === 0 && <tr><td colSpan="3" className="text-center py-8 text-gray-400">Belum ada data siswa.</td></tr>}
+                  </tbody>
+                </table>
+             </div>
+          </div>
+        );
+      default: return null;
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen bg-slate-100 font-sans">
+      {/* Sidebar Admin */}
+      <aside className="w-64 bg-slate-900 text-white flex-shrink-0 hidden md:flex flex-col transition-all duration-300">
+        <div className="p-6 flex items-center gap-3 border-b border-slate-800">
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center shadow-lg">
+            <ChefHat className="text-white" size={24}/>
+          </div>
+          <div>
+            <h1 className="font-bold text-lg leading-tight">Admin<br/><span className="text-blue-400 font-normal text-sm">Panel</span></h1>
+          </div>
+        </div>
+        <nav className="flex-1 p-4 space-y-1">
+          {[
+            { id: 'menu', label: 'Daftar Menu', icon: Utensils },
+            { id: 'pembayaran', label: 'Pembayaran', icon: Wallet },
+            { id: 'laporan', label: 'Laporan', icon: BarChart3 },
+            { id: 'tamu', label: 'Data Tamu', icon: UserCircle },
+            { id: 'siswa', label: 'Data Siswa', icon: GraduationCap },
+          ].map(item => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${activeTab === item.id ? 'bg-blue-600 text-white shadow-md translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white hover:translate-x-1'}`}
+            >
+              <item.icon size={18} /> <span className="font-medium">{item.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="p-4 border-t border-slate-800">
+          <div className="flex items-center gap-3 mb-4 px-2">
+            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold">AD</div>
+            <div className="text-xs">
+              <p className="text-white font-medium">Administrator</p>
+              <p className="text-slate-500">admin@kantin.com</p>
+            </div>
+          </div>
+          <button onClick={onLogout} className="flex items-center justify-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 w-full px-4 py-2 rounded-lg transition-colors text-sm font-medium">
+            <LogOut size={16} /> Keluar Aplikasi
+          </button>
+        </div>
+      </aside>
+      
+      {/* Mobile Header & Content Admin */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        <header className="bg-white shadow-sm p-4 flex justify-between items-center md:hidden z-20">
+           <div className="flex items-center gap-2">
+             <ChefHat className="text-slate-900" size={24} />
+             <span className="font-bold text-slate-800">Admin Panel</span>
+           </div>
+           <button onClick={onLogout} className="text-slate-500"><LogOut size={24} /></button>
+        </header>
+        <div className="md:hidden bg-slate-800 text-white overflow-x-auto flex p-2 space-x-2 scrollbar-hide shadow-inner">
+           {['menu', 'pembayaran', 'laporan', 'tamu', 'siswa'].map(tab => (
+             <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${activeTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</button>
+           ))}
+        </div>
+        <main className="flex-1 overflow-auto p-4 md:p-8 bg-slate-100">
+          {renderContent()}
+        </main>
+      </div>
+    </div>
+  );
+};
+
+// --- Komponen Utama App ---
+export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loginForm, setLoginForm] = useState({ username: '', password: '', phone: '' });
+  const [loginRole, setLoginRole] = useState('siswa'); 
+  const [loginError, setLoginError] = useState('');
+  
+  const [menuItems, setMenuItems] = useState([]);
+  const [isLoadingMenu, setIsLoadingMenu] = useState(true);
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
+  const [cart, setCart] = useState([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSuccessMsg, setShowSuccessMsg] = useState(false);
+  const [isOrderConfirmed, setIsOrderConfirmed] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lastOrderData, setLastOrderData] = useState(null);
+
+  // Styling Tombol Role Aktif (Warna Warni)
+  const getRoleButtonClass = (role) => {
+    if (loginRole === role) {
+       switch(role) {
+         case 'admin': return 'bg-slate-800 text-white shadow-md border-slate-900 ring-2 ring-slate-200';
+         case 'tamu': return 'bg-teal-600 text-white shadow-md border-teal-700 ring-2 ring-teal-200';
+         default: return 'bg-red-600 text-white shadow-md border-red-700 ring-2 ring-red-200'; // Siswa
+       }
+    }
+    return 'bg-gray-50 text-gray-500 hover:bg-gray-100 border border-gray-200';
+  };
+
+  // Warna Gradient Background Login
+  const getLoginBgGradient = () => {
+     switch(loginRole) {
+       case 'admin': return 'from-slate-700 to-slate-900';
+       case 'tamu': return 'from-teal-500 to-teal-700';
+       default: return 'from-red-600 to-red-700'; // Siswa
+     }
+  };
+
+  const bgCanteenUrl = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=100&w=3000&auto=format&fit=crop";
+
+  useEffect(() => {
+    if (isLoggedIn) fetchMenu();
+  }, [isLoggedIn]);
+
+  const fetchMenu = async () => {
+    try {
+      setIsLoadingMenu(true);
+      setIsOfflineMode(false);
+      const data = await supabaseRequest('menus?select=*&order=name.asc');
+      if (data && data.length > 0) setMenuItems(data);
+      else { 
+        setMenuItems(MOCK_MENU_ITEMS); 
+        if (data.length === 0) console.log("Database menu kosong, menggunakan mock.");
+      }
+    } catch (error) {
+      setMenuItems(MOCK_MENU_ITEMS); setIsOfflineMode(true);
+    } finally { setIsLoadingMenu(false); }
+  };
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    setLoginError('');
+    if (!loginForm.username) return setLoginError('Nama/Username wajib diisi!');
+    if (loginRole !== 'tamu' && !loginForm.password) return setLoginError('Password wajib diisi!');
+    if (loginRole === 'tamu' && !loginForm.phone) return setLoginError('No. Handphone wajib diisi!');
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false); setCart([]); setLoginForm({ username: '', password: '', phone: '' }); setLoginRole('siswa'); setIsOrderConfirmed(false); setLastOrderData(null);
+  };
+
+  const addToCart = (item) => {
+    setCart(prev => {
+      const ex = prev.find(i => i.id === item.id);
+      if (ex) return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i);
+      return [...prev, { ...item, quantity: 1 }];
+    });
+    setShowSuccessMsg(true); setTimeout(() => setShowSuccessMsg(false), 2000);
+  };
+
+  const removeFromCart = (id) => { setCart(prev => prev.filter(i => i.id !== id)); };
+  const updateQuantity = (id, d) => { setCart(prev => prev.map(i => i.id === id ? (i.quantity + d > 0 ? { ...i, quantity: i.quantity + d } : i) : i)); };
+
+  const handleCheckout = async () => {
+    if (cart.length === 0) return;
+    setIsSubmitting(true);
+    const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    try {
+      if (!isOfflineMode) {
+        try {
+          const orderPayload = {
+            customer_name: loginForm.username,
+            customer_role: loginRole,
+            customer_phone: loginRole === 'tamu' ? loginForm.phone : null,
+            total_price: totalPrice,
+            status: 'pending'
+          };
+          const orderResponse = await supabaseRequest('orders', 'POST', orderPayload);
+          const orderData = orderResponse[0];
+          const orderItems = cart.map(item => ({ order_id: orderData.id, menu_name: item.name, quantity: item.quantity, price_at_purchase: item.price }));
+          await supabaseRequest('order_items', 'POST', orderItems);
+          setLastOrderData({ id: orderData.id, items: [...cart], total: totalPrice });
+        } catch (err) { throw err; }
+      } else { throw new Error("Offline Mode"); }
+      setIsOrderConfirmed(true); setIsCartOpen(false); setCart([]); 
+    } catch (error) {
+      setLastOrderData({ id: `OFF-${Math.floor(Math.random()*10000)}`, items: [...cart], total: totalPrice });
+      setIsOrderConfirmed(true); setIsCartOpen(false); setCart([]);
+    } finally { setIsSubmitting(false); }
+  };
+
+  if (isLoggedIn && loginRole === 'admin') {
+    return <AdminDashboard menuItems={menuItems} onLogout={handleLogout} refreshData={fetchMenu} />;
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-cover bg-center" style={{ backgroundImage: `url(${bgCanteenUrl})` }}>
+        {/* Background Overlay - Tetap Hitam (Netral) agar tidak sakit mata */}
+        <div className="absolute inset-0 bg-black/60"></div>
+        
+        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl p-8 w-full max-w-md z-10 border border-white/20 animate-fade-in-up">
+          <div className="text-center mb-6">
+            <div className="mx-auto mb-4 w-24 h-24 flex items-center justify-center">
+              <ChefLogo className="w-24 h-24 shadow-lg shadow-red-600/30" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800">Kantin Digital</h1>
+            <p className="text-gray-500 text-sm mt-1 font-medium">Silakan login untuk memesan</p>
+          </div>
+
+          {/* Tombol Pilihan Role Berwarna */}
+          <div className="flex gap-2 mb-6 bg-gray-100 p-1 rounded-xl">
+            {['siswa', 'admin', 'tamu'].map((role) => (
+              <button key={role} type="button" onClick={() => { setLoginRole(role); setLoginError(''); }}
+                className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 text-xs font-bold rounded-lg transition-all capitalize ${getRoleButtonClass(role)}`}>
+                {role === 'siswa' && <GraduationCap size={18} />}
+                {role === 'admin' && <ShieldCheck size={18} />}
+                {role === 'tamu' && <UserCircle size={18} />}
+                {role}
+              </button>
+            ))}
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{loginRole === 'siswa' ? 'NIS / Nama' : loginRole === 'admin' ? 'Username' : 'Nama Tamu'}</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><User className="text-gray-400" size={18} /></div>
+                <input type="text" required className="pl-10 block w-full border-gray-300 rounded-lg border p-2.5 focus:ring-2 focus:ring-opacity-50 outline-none transition-all focus:border-transparent focus:ring-current" style={{color: 'inherit'}} placeholder="Masukkan identitas" value={loginForm.username} onChange={(e) => setLoginForm({...loginForm, username: e.target.value})} />
+              </div>
+            </div>
+
+            {/* Input No HP Khusus Tamu */}
+            {loginRole === 'tamu' && (
+              <div className="animate-fade-in-up">
+                <label className="block text-sm font-medium text-gray-700 mb-1">No. Handphone</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Phone className="text-gray-400" size={18} /></div>
+                  <input type="tel" required className="pl-10 block w-full border-gray-300 rounded-lg border p-2.5 focus:ring-2 focus:ring-teal-500 outline-none" placeholder="Contoh: 08123456789" value={loginForm.phone} onChange={(e) => setLoginForm({...loginForm, phone: e.target.value})} />
+                </div>
+              </div>
+            )}
+
+            {loginRole !== 'tamu' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Lock className="text-gray-400" size={18} /></div>
+                  <input type="password" required className="pl-10 block w-full border-gray-300 rounded-lg border p-2.5 focus:ring-2 focus:ring-opacity-50 outline-none" placeholder="••••••••" value={loginForm.password} onChange={(e) => setLoginForm({...loginForm, password: e.target.value})} />
+                </div>
+              </div>
+            )}
+
+            {loginError && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg flex items-center gap-2"><X size={16} /> {loginError}</div>}
+
+            <button type="submit" className={`w-full text-white font-bold py-3 rounded-lg shadow-lg flex items-center justify-center gap-2 bg-gradient-to-r ${getLoginBgGradient()} hover:opacity-90 transition-opacity`}>
+              Masuk <ArrowRight size={18} />
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // --- USER (Siswa/Tamu) View ---
+  const filteredItems = menuItems.filter(item => (selectedCategory === 'all' || item.category === selectedCategory) && item.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const totalItems = cart.reduce((sum, i) => sum + i.quantity, 0);
+  const totalPrice = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const userThemeColor = loginRole === 'tamu' ? 'teal' : 'red'; // Tema warna user
+
+  return (
+    <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
+      {/* Navbar */}
+      <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur-md shadow-sm border-b border-gray-100">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+             <ChefLogo className={`w-10 h-10 shadow-${userThemeColor}-500/20`} />
+             <div>
+               <div className="flex items-center gap-2"><h1 className="text-xl font-bold text-gray-900">Kantin Digital</h1>{isOfflineMode && <span className="bg-yellow-100 text-yellow-800 text-[10px] px-1.5 rounded border border-yellow-200">Demo</span>}</div>
+               <div className="flex items-center gap-1 text-xs text-gray-500"><span>Halo,</span><span className={`font-bold ${loginRole === 'tamu' ? 'text-teal-600' : 'text-red-600'}`}>{loginForm.username}</span></div>
+             </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={handleLogout} className="p-2 hover:bg-gray-100 rounded-full"><LogOut size={20} className="text-gray-500" /></button>
+            <button onClick={() => setIsCartOpen(true)} className="relative p-2 hover:bg-gray-100 rounded-full"><ShoppingCart size={24} className="text-gray-700" />{totalItems > 0 && !isOrderConfirmed && <span className={`absolute -top-1 -right-1 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full ${loginRole === 'tamu' ? 'bg-teal-500' : 'bg-red-500'}`}>{totalItems}</span>}</button>
+          </div>
+        </div>
+      </nav>
+      
+      {/* Cart & Main Content */}
+      {isCartOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsCartOpen(false)}></div>
+          <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slide-in-right">
+            <div className="p-5 border-b flex justify-between items-center"><h2 className="text-xl font-bold flex items-center gap-2"><ShoppingCart /> Keranjang</h2><button onClick={() => setIsCartOpen(false)}><X /></button></div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-gray-50">
+              {cart.length === 0 ? <p className="text-center text-gray-500 mt-10">Keranjang kosong.</p> : cart.map(item => (
+                <div key={item.id} className="flex gap-4 bg-white p-3 rounded-xl shadow-sm border">
+                  <img src={item.image} className="w-16 h-16 rounded-lg object-cover" onError={(e)=>{e.target.src="https://placehold.co/80x80?text=MENU"}}/>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-sm">{item.name}</h4>
+                    <p className="text-xs text-gray-500">{formatRupiah(item.price)}</p>
+                    <div className="flex items-center justify-between mt-2">
+                       <div className="flex items-center gap-2"><button onClick={()=>updateQuantity(item.id, -1)} className="bg-gray-200 w-6 h-6 rounded flex items-center justify-center">-</button><span className="text-sm font-bold">{item.quantity}</span><button onClick={()=>updateQuantity(item.id, 1)} className="bg-gray-200 w-6 h-6 rounded flex items-center justify-center">+</button></div>
+                       <button onClick={()=>removeFromCart(item.id)} className="text-red-500"><Trash2 size={16}/></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {cart.length > 0 && (
+              <div className="p-5 border-t bg-white">
+                <div className="flex justify-between mb-4 font-bold text-lg"><span>Total</span><span>{formatRupiah(totalPrice)}</span></div>
+                <button onClick={handleCheckout} disabled={isSubmitting} className={`w-full text-white font-bold py-3 rounded-xl shadow-lg flex items-center justify-center gap-2 ${loginRole === 'tamu' ? 'bg-teal-600 hover:bg-teal-700' : 'bg-red-600 hover:bg-red-700'}`}>{isSubmitting ? <Loader2 className="animate-spin"/> : <ShieldCheck/>} Konfirmasi Pesanan</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isOrderConfirmed ? (
+        <div className="max-w-2xl mx-auto px-4 py-10 animate-fade-in-up">
+          <div className="bg-white rounded-2xl shadow-xl border p-8 text-center">
+            <ChefHat size={48} className={`mx-auto mb-4 ${loginRole === 'tamu' ? 'text-teal-600' : 'text-red-600'}`} />
+            <h2 className="text-3xl font-bold text-gray-900">Pesanan Berhasil!</h2>
+            <p className="text-gray-500 mt-2">Nomor Order: <span className="font-bold text-gray-800">#{lastOrderData?.id}</span></p>
+            <div className="mt-6 border-t pt-4 text-left">
+              <h3 className="font-bold mb-2">Detail:</h3>
+              {lastOrderData?.items.map(i => <div key={i.id} className="flex justify-between text-sm text-gray-600 py-1"><span>{i.name} ({i.quantity}x)</span><span>{formatRupiah(i.price*i.quantity)}</span></div>)}
+              <div className="flex justify-between font-bold text-lg mt-3 border-t pt-2"><span>Total</span><span>{formatRupiah(lastOrderData?.total)}</span></div>
+            </div>
+            <p className="text-sm text-gray-400 mt-6">Silakan bayar di kasir.</p>
+            <button onClick={() => {setCart([]); setIsOrderConfirmed(false);}} className={`mt-6 w-full py-3 rounded-lg text-white font-bold ${loginRole === 'tamu' ? 'bg-teal-600' : 'bg-red-600'}`}>Pesan Lagi</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Hero */}
+          <div className={`relative py-12 px-4 mb-6 text-white overflow-hidden bg-gradient-to-r ${loginRole === 'tamu' ? 'from-teal-800 to-black' : 'from-red-900 to-black'}`}>
+            <div className="relative z-10 max-w-5xl mx-auto">
+              <h2 className="text-3xl font-bold mb-2">Mau makan apa?</h2>
+              <div className="relative max-w-lg mt-4"><input type="text" placeholder="Cari menu..." className="w-full pl-10 pr-4 py-3 rounded-xl text-gray-800 focus:outline-none shadow-lg" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /><Search className="absolute left-3 top-3.5 text-gray-400" size={20} /></div>
+            </div>
+          </div>
+
+          <main className="max-w-5xl mx-auto px-4 pb-24">
+            <div className="flex gap-3 overflow-x-auto pb-4 mb-4 scrollbar-hide">
+              {[{id:'all', label:'Semua', icon:<Utensils size={16}/>}, {id:'makanan', label:'Makanan', icon:<ChefHat size={16}/>}, {id:'minuman', label:'Minuman', icon:<Coffee size={16}/>}].map(cat => (
+                <button key={cat.id} onClick={()=>setSelectedCategory(cat.id)} className={`flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all ${selectedCategory === cat.id ? (loginRole === 'tamu' ? 'bg-teal-600 text-white shadow-lg' : 'bg-red-600 text-white shadow-lg') : 'bg-white border text-gray-600'}`}>{cat.icon} {cat.label}</button>
+              ))}
+            </div>
+
+            {isLoadingMenu ? <div className="py-20 text-center text-gray-500"><Loader2 className="animate-spin mx-auto mb-2"/>Loading...</div> : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {filteredItems.map(item => (
+                  <div key={item.id} className="bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-all flex flex-col">
+                    <div className="h-40 bg-gray-200 relative"><img src={item.image} className="w-full h-full object-cover" onError={(e)=>{e.target.src="https://placehold.co/400x400?text=MENU"}}/></div>
+                    <div className="p-3 flex flex-col flex-grow">
+                      <h3 className="font-bold text-gray-800 text-sm line-clamp-1">{item.name}</h3>
+                      <p className="text-xs text-gray-500 line-clamp-2 mb-3 mt-1">{item.desc}</p>
+                      <div className="mt-auto flex justify-between items-center">
+                        <span className={`font-bold ${loginRole === 'tamu' ? 'text-teal-600' : 'text-red-600'}`}>{formatRupiah(item.price)}</span>
+                        <button onClick={()=>addToCart(item)} className={`p-2 rounded-lg text-white ${loginRole === 'tamu' ? 'bg-teal-500 hover:bg-teal-600' : 'bg-red-500 hover:bg-red-600'}`}><Plus size={18}/></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </main>
+        </>
+      )}
+      {showSuccessMsg && <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-full text-sm shadow-lg z-50 flex gap-2 items-center"><ShieldCheck size={16} className="text-green-400"/> Masuk keranjang!</div>}
+    </div>
+  );
+}
+</html>
